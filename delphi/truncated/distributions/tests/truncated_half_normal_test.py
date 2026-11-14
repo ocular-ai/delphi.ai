@@ -148,7 +148,6 @@ def test_twenty_dimensions_sum_threshold():
         bounds=(0.0, 400.0),
     )
     _recovers(
-        dims=20,
         scale=scale,
         phi=calibrated.phi,
         tolerances={"ema": 0.0047, "avg": 0.0026},

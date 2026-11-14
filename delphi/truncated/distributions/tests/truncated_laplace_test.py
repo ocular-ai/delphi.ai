@@ -168,7 +168,6 @@ def test_twenty_dimensions_norm_threshold():
         bounds=(0.0, 200.0),
     )
     _recovers(
-        dims=20,
         loc=loc,
         scale=scale,
         phi=calibrated.phi,
