@@ -19,7 +19,7 @@ class TruncatedRayleigh(
 ):
     """Model for truncated Rayleigh distributions."""
 
-    dist = rayleigh.Rayleigh
+    family = rayleigh.Rayleigh
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("scale_",)
 
@@ -50,26 +50,6 @@ class TruncatedRayleigh(
     def _constraints(self, theta):
         """Clamp theta to be strictly negative, so the scale is real."""
         return ch.clamp(theta, max=-1e-6)
-
-    @property
-    def best_scale_(self):
-        """Return the best scale estimate."""
-        return rayleigh.Rayleigh.to_canonical(self.best_params)
-
-    @property
-    def final_scale_(self):
-        """Return the final scale estimate."""
-        return rayleigh.Rayleigh.to_canonical(self.final_params)
-
-    @property
-    def ema_scale_(self):
-        """Return the EMA scale estimate."""
-        return rayleigh.Rayleigh.to_canonical(self.ema_params)
-
-    @property
-    def avg_scale_(self):
-        """Return the averaged scale estimate."""
-        return rayleigh.Rayleigh.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

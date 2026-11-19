@@ -18,7 +18,7 @@ class TruncatedBooleanProduct(
 ):
     """Model for truncated boolean product distributions to be passed into trainer."""
 
-    dist = boolean_product.BooleanProduct
+    family = boolean_product.BooleanProduct
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("probs_",)
 
@@ -46,26 +46,6 @@ class TruncatedBooleanProduct(
         emp = dataset_s.mean(0).clamp(1e-6, 1 - 1e-6)
         self.emp_theta = boolean_product.BooleanProduct.to_natural(emp)
         self.register_parameter("theta", torch.nn.Parameter(self.emp_theta.clone()))
-
-    @property
-    def best_probs_(self):
-        """Return the best probability parameter estimate."""
-        return boolean_product.BooleanProduct.to_canonical(self.best_params)
-
-    @property
-    def final_probs_(self):
-        """Return the final probability parameter estimate."""
-        return boolean_product.BooleanProduct.to_canonical(self.final_params)
-
-    @property
-    def ema_probs_(self):
-        """Return the EMA probability parameter estimate."""
-        return boolean_product.BooleanProduct.to_canonical(self.ema_params)
-
-    @property
-    def avg_probs_(self):
-        """Return the averaged probability parameter estimate."""
-        return boolean_product.BooleanProduct.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""
