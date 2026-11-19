@@ -44,10 +44,9 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_inverse_wishart.TruncatedInverseWishart,
         target=_inverse_wishart(df, scale),
         phi=phi,
-        dims=scale.size(0),
         parameter=("df_", "scale_"),
         empirical=helpers.untruncated_mle(
-            truncated_inverse_wishart.TruncatedInverseWishart, scale.size(0)
+            truncated_inverse_wishart.TruncatedInverseWishart
         ),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
@@ -64,6 +63,7 @@ def _calibrated(set_family, df: ch.Tensor, scale: ch.Tensor, bounds, **kwargs):
     ).phi
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_first_diagonal_threshold(known):
     df = ch.tensor([8.0])
@@ -81,6 +81,7 @@ def test_first_diagonal_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -96,7 +97,8 @@ def test_determinant_threshold(known):
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.278 to 0.365 (ema), 0.279 to 0.365 (avg).
-@helpers.KNOWN_AND_UNKNOWN
+@pytest.mark.long
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_random_half_space(known):
     df = ch.tensor([8.0])
     _recovers(
@@ -115,7 +117,8 @@ def test_random_half_space(known):
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@pytest.mark.long
+@helpers.KNOWN_AND_UNKNOWN
 def test_identity(known):
     _recovers(
         df=ch.tensor([8.0]),
@@ -127,6 +130,7 @@ def test_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_three_by_three_identity(known):
     _recovers(
@@ -210,10 +214,9 @@ def test_indistinguishable_pair(known):
         model_class=truncated_inverse_wishart.TruncatedInverseWishart,
         targets=(first, second),
         phi=phi,
-        dims=2,
         parameter=("df_", "scale_"),
         empirical=helpers.untruncated_mle(
-            truncated_inverse_wishart.TruncatedInverseWishart, 2
+            truncated_inverse_wishart.TruncatedInverseWishart
         ),
         rebuild=_inverse_wishart,
         known=known,

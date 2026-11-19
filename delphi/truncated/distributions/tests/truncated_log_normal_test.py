@@ -19,7 +19,6 @@ ch.set_printoptions(precision=4, sci_mode=False)
 def _fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     target: torch.distributions.LogNormal,
     phi: helpers.Oracle,
-    dims: int,
     hyperparameters: Optional[dict] = None,
     pass_alpha: bool = True,
     known: bool = True,
@@ -33,7 +32,6 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     Args:
         target: Untruncated distribution the data is drawn from.
         phi: Truncation set oracle, in the original coordinates.
-        dims: Number of dimensions.
         pass_alpha: Supply the measured survival mass to the model.
         hyperparameters: Hyperparameter dict for the procedure.
         known: Give the model phi; else it learns the set, scored against phi.
@@ -52,7 +50,6 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         truncated_log_normal.TruncatedLogNormal,
         lambda z: phi(ch.exp(ch.log(z) * std + mean)),
         known,
-        dims,
         *args,
         hyperparameters=hyperparameters,
     )
@@ -76,7 +73,6 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     loc: ch.Tensor,
     scale: ch.Tensor,
     phi: helpers.Oracle,
@@ -84,26 +80,28 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
     pass_alpha: bool = True,
     baseline_must_fail: bool = True,
     known: bool = True,
+    tolerances: Optional[dict[str, float]] = None,
+    max_coordinate: Optional[float] = None,
     unknown_tolerances: Optional[dict[str, float]] = None,
     set_tolerance: float = helpers.SET_TOLERANCE,
 ) -> None:
     target = torch.distributions.LogNormal(loc, scale)
-    naive, fits = _fit(
-        target, phi, dims, hyperparameters, pass_alpha, known, set_tolerance
-    )
+    naive, fits = _fit(target, phi, hyperparameters, pass_alpha, known, set_tolerance)
     helpers.assert_recovers(
         estimate=lambda name: fits[name],
         divergence=lambda fitted: torch.distributions.kl.kl_divergence(fitted, target),
         baseline=naive,
         baseline_must_fail=baseline_must_fail,
-        **helpers.unknown_bounds(known, unknown_tolerances),
+        **(
+            helpers.unknown_bounds(known, unknown_tolerances)
+            or {"tolerances": tolerances, "max_coordinate": max_coordinate}
+        ),
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         loc=ch.tensor([0.0]),
         scale=ch.tensor([1.0]),
         phi=lambda z: z[:, 0] > 2.0,
@@ -111,6 +109,7 @@ def test_one_dimension(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     loc, scale = ch.tensor([0.0, 0.5]), ch.tensor([1.0, 0.5])
@@ -120,9 +119,10 @@ def test_two_dimensions(known):
         target_alpha=(0.15, 0.25),
         bounds=(0.0, 100.0),
     )
-    _recovers(dims=2, loc=loc, scale=scale, phi=calibrated.phi, known=known)
+    _recovers(loc=loc, scale=scale, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     loc, scale = ch.tensor([0.0, 0.5]), ch.tensor([1.0, 0.5])
@@ -131,13 +131,13 @@ def test_two_dimensions_random_half_space(known):
         torch.distributions.LogNormal(loc, scale),
         bounds=(-50.0, 50.0),
     )
-    _recovers(dims=2, loc=loc, scale=scale, phi=calibrated.phi, known=known)
+    _recovers(loc=loc, scale=scale, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         loc=ch.tensor([0.0]),
         scale=ch.tensor([1.0]),
         phi=delphi.oracle.Identity(),
@@ -147,10 +147,10 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         loc=ch.linspace(-0.5, 0.5, 10),
         scale=ch.linspace(0.5, 1.0, 10),
         phi=delphi.oracle.Identity(),
@@ -162,6 +162,7 @@ def test_ten_dimensions_identity(known):
 
 # Unknown truncation, rho 0.3: over seeds 0,1,2 the estimate's KL measured
 # 0.003 to 0.164 (ema), 0.009 to 0.206 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     loc, scale = ch.tensor([0.0]), ch.tensor([1.0])
@@ -172,7 +173,6 @@ def test_one_dimension_small_mass(known):
         bounds=(0.0, 100.0),
     )
     _recovers(
-        dims=1,
         loc=loc,
         scale=scale,
         phi=calibrated.phi,
@@ -184,6 +184,7 @@ def test_one_dimension_small_mass(known):
 
 # Unknown truncation, degree 3: over seeds 0,1,2 the estimate's KL measured
 # 0.213 to 0.242 (ema), 0.214 to 0.243 (avg); the set error 0.101 to 0.112.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     loc, scale = ch.linspace(-0.5, 0.5, 10), ch.linspace(0.5, 1.0, 10)
@@ -194,7 +195,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(0.0, 500.0),
     )
     _recovers(
-        dims=10,
         loc=loc,
         scale=scale,
         phi=calibrated.phi,
@@ -205,6 +205,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -222,7 +223,7 @@ def test_indistinguishable_pair(known):
     def phi(z):
         return (z[:, 0] > 1.0) & (z[:, 0] < 2.0)
 
-    results = [_fit(target, phi, 1, known=known) for target in targets]
+    results = [_fit(target, phi, known=known) for target in targets]
     for name in helpers.TOLERANCES:
         helpers.assert_distinguishes(
             targets=targets,
@@ -230,3 +231,22 @@ def test_indistinguishable_pair(known):
             naive=(results[0][0], results[1][0]),
             divergence=torch.distributions.kl.kl_divergence,
         )
+
+
+# Seeds 0-2: KL at most 0.0023 (ema), 0.0025 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    loc, scale = ch.linspace(-0.5, 0.5, 20), ch.linspace(0.5, 1.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.LogNormal(loc, scale),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 1000.0),
+    )
+    _recovers(
+        loc=loc,
+        scale=scale,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.0046, "avg": 0.0051},
+        max_coordinate=0.0011,
+    )

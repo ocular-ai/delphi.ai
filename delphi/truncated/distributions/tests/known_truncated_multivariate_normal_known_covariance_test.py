@@ -44,7 +44,6 @@ def _fit(
         known_mvn_known_cov.KnownTruncationMultivariateNormalKnownCovariance,
         phi,
         known,
-        target.loc.numel(),
         covariance,
         *args,
         hyperparameters=hyperparameters,
@@ -94,6 +93,7 @@ def _calibrated(
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.000 to 0.272 (ema), 0.000 to 0.271 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension(known):
     target = helpers.correlated_normal(1)
@@ -114,6 +114,7 @@ def test_one_dimension(known):
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.007 to 0.224 (ema), 0.007 to 0.224 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     target = helpers.correlated_normal(2)
@@ -132,6 +133,7 @@ def test_two_dimensions(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     target = helpers.correlated_normal(2)
@@ -145,6 +147,7 @@ def test_two_dimensions_random_half_space(known):
 
 # Unknown truncation, degree 2 and rho 0.5: over seeds 0,1,2 the estimate's KL
 # measured 0.158 to 0.285 (ema), 0.158 to 0.284 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_two_dimensions_crescent(known):
     _recovers(
@@ -158,6 +161,7 @@ def test_two_dimensions_crescent(known):
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.325 to 0.337 (ema), 0.326 to 0.338 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_triangle(known):
     _recovers(
@@ -169,6 +173,7 @@ def test_two_dimensions_triangle(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions(known):
     target = helpers.correlated_normal(10)
@@ -196,6 +201,7 @@ def test_ten_dimensions_sum_threshold(known):
 
 # Unknown truncation needs degree 3 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_norm_threshold(known):
     target = helpers.correlated_normal(10)
@@ -242,6 +248,7 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
@@ -256,6 +263,7 @@ def test_ten_dimensions_identity(known):
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.005 to 0.188 (ema), 0.005 to 0.189 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     target = helpers.correlated_normal(1)
@@ -279,10 +287,11 @@ def test_one_dimension_small_mass(known):
 def test_unit_alpha_is_rejected():
     with pytest.raises(ValueError, match="nothing was truncated"):
         known_mvn_known_cov.KnownTruncationMultivariateNormalKnownCovariance(
-            delphi.oracle.Identity(), 2, ch.eye(2), alpha=1.0
+            delphi.oracle.Identity(), ch.eye(2), alpha=1.0
         )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,

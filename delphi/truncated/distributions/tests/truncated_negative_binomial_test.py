@@ -40,7 +40,6 @@ def negative_binomial_kl_divergence(
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     total_count: ch.Tensor,
     probs: ch.Tensor,
     phi: helpers.Oracle,
@@ -54,7 +53,6 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_negative_binomial.TruncatedNegativeBinomial,
         target=torch.distributions.NegativeBinomial(total_count, probs),
         phi=phi,
-        dims=dims,
         parameter="probs_",
         empirical=lambda s: s.mean(0) / (total_count + s.mean(0)),
         hyperparameters=hyperparameters,
@@ -68,10 +66,9 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         total_count=ch.tensor([4.0]),
         probs=ch.tensor([0.5]),
         phi=lambda z: z[:, 0] > 5,
@@ -88,11 +85,10 @@ def test_two_dimensions(known):
         target_alpha=(0.10, 0.40),
         bounds=(-1.0, 200.0),
     )
-    _recovers(
-        dims=2, total_count=total_count, probs=probs, phi=calibrated.phi, known=known
-    )
+    _recovers(total_count=total_count, probs=probs, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     total_count, probs = ch.tensor([4.0, 6.0]), ch.tensor([0.5, 0.3])
@@ -102,15 +98,12 @@ def test_two_dimensions_random_half_space(known):
         target_alpha=(0.10, 0.40),
         bounds=(-50.0, 50.0),
     )
-    _recovers(
-        dims=2, total_count=total_count, probs=probs, phi=calibrated.phi, known=known
-    )
+    _recovers(total_count=total_count, probs=probs, phi=calibrated.phi, known=known)
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         total_count=ch.tensor([4.0]),
         probs=ch.tensor([0.5]),
         phi=delphi.oracle.Identity(),
@@ -120,11 +113,11 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     total_count, probs = 4.0 * ch.ones(10), ch.linspace(0.3, 0.7, 10)
     _recovers(
-        dims=10,
         total_count=total_count,
         probs=probs,
         phi=delphi.oracle.Identity(),
@@ -134,6 +127,7 @@ def test_ten_dimensions_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     total_count, probs = ch.tensor([4.0]), ch.tensor([0.5])
@@ -143,11 +137,10 @@ def test_one_dimension_small_mass(known):
         target_alpha=(0.005, 0.03),
         bounds=(-1.0, 200.0),
     )
-    _recovers(
-        dims=1, total_count=total_count, probs=probs, phi=calibrated.phi, known=known
-    )
+    _recovers(total_count=total_count, probs=probs, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     total_count, probs = 4.0 * ch.ones(10), ch.linspace(0.3, 0.7, 10)
@@ -157,11 +150,10 @@ def test_ten_dimensions_sum_threshold(known):
         target_alpha=(0.15, 0.25),
         bounds=(0.0, 600.0),
     )
-    _recovers(
-        dims=10, total_count=total_count, probs=probs, phi=calibrated.phi, known=known
-    )
+    _recovers(total_count=total_count, probs=probs, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -177,11 +169,29 @@ def test_indistinguishable_pair(known):
             torch.distributions.NegativeBinomial(total_count, ch.tensor([0.7])),
         ),
         phi=lambda z: (z[:, 0] > 5.5) & (z[:, 0] < 7.5),
-        dims=1,
         parameter="probs_",
         empirical=lambda s: s.mean(0) / (total_count + s.mean(0)),
         model_args=(total_count,),
         rebuild=functools.partial(torch.distributions.NegativeBinomial, total_count),
         divergence=negative_binomial_kl_divergence,
         known=known,
+    )
+
+
+# Seeds 0-2: KL at most 0.0019 (ema), 0.0018 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    total_count, probs = 4.0 * ch.ones(20), ch.linspace(0.3, 0.7, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.NegativeBinomial(total_count, probs),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 1200.0),
+    )
+    _recovers(
+        total_count=total_count,
+        probs=probs,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.0039, "avg": 0.0036},
+        max_coordinate=0.0017,
     )

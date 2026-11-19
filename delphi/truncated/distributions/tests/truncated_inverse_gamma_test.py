@@ -16,7 +16,6 @@ ch.set_printoptions(precision=4, sci_mode=False)
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     concentration: ch.Tensor,
     rate: ch.Tensor,
     phi: helpers.Oracle,
@@ -30,7 +29,6 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_inverse_gamma.TruncatedInverseGamma,
         target=torch.distributions.InverseGamma(concentration, rate),
         phi=phi,
-        dims=dims,
         parameter="rate_",
         empirical=lambda s: concentration / (1.0 / s).mean(0),
         hyperparameters=hyperparameters,
@@ -48,7 +46,6 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         concentration=ch.tensor([3.0]),
         rate=ch.tensor([2.0]),
         phi=lambda z: z[:, 0] > 1.2,
@@ -59,6 +56,7 @@ def test_one_dimension(known):
 
 # Unknown truncation needs rho 0.3 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     concentration, rate = ch.tensor([3.0, 4.0]), ch.tensor([2.0, 1.0])
@@ -69,7 +67,6 @@ def test_two_dimensions(known):
         bounds=(0.0, 100.0),
     )
     _recovers(
-        dims=2,
         concentration=concentration,
         rate=rate,
         phi=calibrated.phi,
@@ -80,6 +77,7 @@ def test_two_dimensions(known):
 
 # Unknown truncation, rho 0.3: over seeds 0,1,2 the estimate's KL measured
 # 0.043 to 0.129 (ema), 0.055 to 0.142 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     concentration, rate = ch.tensor([3.0, 4.0]), ch.tensor([2.0, 1.0])
@@ -90,7 +88,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-50.0, 50.0),
     )
     _recovers(
-        dims=2,
         concentration=concentration,
         rate=rate,
         phi=calibrated.phi,
@@ -100,10 +97,10 @@ def test_two_dimensions_random_half_space(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         concentration=ch.tensor([3.0]),
         rate=ch.tensor([2.0]),
         phi=delphi.oracle.Identity(),
@@ -113,11 +110,11 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     concentration, rate = 3.0 * ch.ones(10), ch.linspace(0.5, 3.0, 10)
     _recovers(
-        dims=10,
         concentration=concentration,
         rate=rate,
         phi=delphi.oracle.Identity(),
@@ -129,6 +126,7 @@ def test_ten_dimensions_identity(known):
 
 # Unknown truncation needs degree 2 and rho 0.5 here; over seeds 0,1,2 it
 # meets the shared bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     concentration, rate = ch.tensor([3.0]), ch.tensor([2.0])
@@ -139,7 +137,6 @@ def test_one_dimension_small_mass(known):
         bounds=(0.0, 100.0),
     )
     _recovers(
-        dims=1,
         concentration=concentration,
         rate=rate,
         phi=calibrated.phi,
@@ -148,6 +145,7 @@ def test_one_dimension_small_mass(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     concentration, rate = 3.0 * ch.ones(10), ch.linspace(0.5, 3.0, 10)
@@ -157,11 +155,10 @@ def test_ten_dimensions_sum_threshold(known):
         target_alpha=(0.15, 0.25),
         bounds=(0.0, 500.0),
     )
-    _recovers(
-        dims=10, concentration=concentration, rate=rate, phi=calibrated.phi, known=known
-    )
+    _recovers(concentration=concentration, rate=rate, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -177,10 +174,28 @@ def test_indistinguishable_pair(known):
             torch.distributions.InverseGamma(concentration, ch.tensor([4.0])),
         ),
         phi=lambda z: (z[:, 0] > 0.6) & (z[:, 0] < 0.8),
-        dims=1,
         parameter="rate_",
         empirical=lambda s: concentration / (1.0 / s).mean(0),
         model_args=(concentration,),
         rebuild=functools.partial(torch.distributions.InverseGamma, concentration),
         known=known,
+    )
+
+
+# Seeds 0-2: KL at most 0.0021 (ema), 0.0019 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    concentration, rate = 3.0 * ch.ones(20), ch.linspace(0.5, 3.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.InverseGamma(concentration, rate),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 1000.0),
+    )
+    _recovers(
+        concentration=concentration,
+        rate=rate,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.0042, "avg": 0.0038},
+        max_coordinate=0.0012,
     )

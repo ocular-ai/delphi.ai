@@ -4,6 +4,7 @@
 import functools
 from typing import Any, Optional
 
+import pytest
 import torch as ch
 import torch.distributions
 
@@ -21,7 +22,6 @@ def _moments(s: ch.Tensor) -> tuple[ch.Tensor, ch.Tensor]:
 
 
 def _recovers(
-    dims: int,
     first: ch.Tensor,
     second: ch.Tensor,
     phi: helpers.Oracle,
@@ -35,7 +35,6 @@ def _recovers(
         model_class=truncated_beta.TruncatedBeta,
         target=torch.distributions.Beta(first, second),
         phi=phi,
-        dims=dims,
         parameter=("concentration1_", "concentration0_"),
         empirical=_moments,
         hyperparameters=hyperparameters,
@@ -49,7 +48,6 @@ def _recovers(
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         first=ch.tensor([2.0]),
         second=ch.tensor([3.0]),
         phi=lambda z: z[:, 0] > 0.5,
@@ -59,7 +57,8 @@ def test_one_dimension(known):
 
 # Unknown truncation: over seeds 0,1,2 the estimate's KL measured 0.206 to
 # 0.257 (ema), 0.235 to 0.279 (avg).
-@helpers.KNOWN_AND_UNKNOWN
+@pytest.mark.long
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_two_dimensions_random_half_space(known):
     first, second = ch.tensor([2.0, 4.0]), ch.tensor([3.0, 2.0])
     calibrated = truncation_sets.calibrate(
@@ -68,7 +67,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-25.0, 25.0),
     )
     _recovers(
-        dims=2,
         first=first,
         second=second,
         phi=calibrated.phi,
@@ -77,10 +75,9 @@ def test_two_dimensions_random_half_space(known):
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         first=ch.tensor([2.0]),
         second=ch.tensor([3.0]),
         phi=delphi.oracle.Identity(),
@@ -91,10 +88,10 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         first=ch.linspace(1.5, 3.0, 10),
         second=ch.linspace(2.0, 4.0, 10),
         phi=delphi.oracle.Identity(),
@@ -105,6 +102,7 @@ def test_ten_dimensions_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     first, second = ch.linspace(1.5, 3.0, 10), ch.linspace(2.0, 4.0, 10)
@@ -115,7 +113,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(0.0, 10.0),
     )
     _recovers(
-        dims=10,
         first=first,
         second=second,
         phi=calibrated.phi,
@@ -123,6 +120,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_indistinguishable_pair(known):
     helpers.assert_family_distinguishes(
@@ -135,8 +133,26 @@ def test_indistinguishable_pair(known):
             torch.distributions.Beta(ch.tensor([5.0]), ch.tensor([5.0])),
         ),
         phi=lambda z: (z[:, 0] > 0.25) & (z[:, 0] < 0.75),
-        dims=1,
         parameter=("concentration1_", "concentration0_"),
         empirical=_moments,
         known=known,
+    )
+
+
+# Seeds 0-2: KL at most 0.0075 (ema), 0.0048 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    first, second = ch.linspace(1.5, 3.0, 20), ch.linspace(2.0, 4.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.Beta(first, second),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 20.0),
+    )
+    _recovers(
+        first=first,
+        second=second,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.016, "avg": 0.0097},
+        max_coordinate=0.0038,
     )

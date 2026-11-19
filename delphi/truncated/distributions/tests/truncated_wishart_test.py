@@ -41,11 +41,8 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_wishart.TruncatedWishart,
         target=_wishart(df, scale),
         phi=phi,
-        dims=scale.size(0),
         parameter=("df_", "covariance_matrix_"),
-        empirical=helpers.untruncated_mle(
-            truncated_wishart.TruncatedWishart, scale.size(0)
-        ),
+        empirical=helpers.untruncated_mle(truncated_wishart.TruncatedWishart),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
         baseline_must_fail=baseline_must_fail,
@@ -63,6 +60,7 @@ def _calibrated(set_family, df: ch.Tensor, scale: ch.Tensor, bounds, **kwargs):
 
 # Unknown truncation needs rho 0.3 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_first_diagonal_threshold(known):
     df = ch.tensor([5.0])
@@ -81,6 +79,7 @@ def test_first_diagonal_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -96,7 +95,8 @@ def test_determinant_threshold(known):
 
 # Unknown truncation: over seeds 0,1,2 the estimate's KL measured 0.193 to
 # 0.220 (ema), 0.192 to 0.220 (avg).
-@helpers.KNOWN_AND_UNKNOWN
+@pytest.mark.long
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_random_half_space(known):
     df = ch.tensor([5.0])
     _recovers(
@@ -114,7 +114,8 @@ def test_random_half_space(known):
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@pytest.mark.long
+@helpers.KNOWN_AND_UNKNOWN
 def test_identity(known):
     _recovers(
         df=ch.tensor([5.0]),
@@ -126,6 +127,7 @@ def test_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_three_by_three_identity(known):
     _recovers(
@@ -212,9 +214,8 @@ def test_indistinguishable_pair(known):
         model_class=truncated_wishart.TruncatedWishart,
         targets=(first, second),
         phi=phi,
-        dims=2,
         parameter=("df_", "covariance_matrix_"),
-        empirical=helpers.untruncated_mle(truncated_wishart.TruncatedWishart, 2),
+        empirical=helpers.untruncated_mle(truncated_wishart.TruncatedWishart),
         rebuild=_wishart,
         known=known,
     )

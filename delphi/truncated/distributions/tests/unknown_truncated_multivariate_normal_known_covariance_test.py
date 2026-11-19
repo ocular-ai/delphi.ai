@@ -32,7 +32,7 @@ def _recovers(
     tolerances: Optional[dict[str, float]] = None,
 ) -> None:
     target = torch.distributions.MultivariateNormal(loc, covariance_matrix)
-    model = _ESTIMATOR(loc.numel(), covariance_matrix)
+    model = _ESTIMATOR(covariance_matrix)
     unknown_truncation.assert_recovers(
         model,
         target,
@@ -53,6 +53,7 @@ def test_half_space():
     )
 
 
+@pytest.mark.long
 def test_ball_off_the_mean():
     _recovers(
         ch.tensor([1.0, -0.5]),
@@ -61,6 +62,7 @@ def test_ball_off_the_mean():
     )
 
 
+@pytest.mark.long
 def test_three_dimensional_polytope():
     _recovers(
         ch.tensor([0.5, -0.3, 0.2]),
@@ -69,6 +71,7 @@ def test_three_dimensional_polytope():
     )
 
 
+@pytest.mark.long
 def test_ten_dimensional_ball():
     _recovers(
         ch.linspace(-0.5, 0.5, 10),
@@ -82,6 +85,7 @@ def test_ten_dimensional_ball():
 _FIGURE_ONE_MEANS = ((0.1, 0.78), (0.0, 0.0))
 
 
+@pytest.mark.long
 @pytest.mark.parametrize("loc", _FIGURE_ONE_MEANS)
 def test_sierpinski_triangle(loc):
     # The naive estimates score 0.15 to 0.18, at the suite's loosest bound,
@@ -94,6 +98,7 @@ def test_sierpinski_triangle(loc):
     )
 
 
+@pytest.mark.long
 def test_sierpinski_pair_is_told_apart():
     """Figure 1's two Gaussians leave samples whose means nearly coincide."""
     phi = truncation_sets.sierpinski(3)
@@ -105,7 +110,7 @@ def test_sierpinski_pair_is_told_apart():
     for target in targets:
         ch.manual_seed(0)
         sample = helpers.generate_truncated_distribution_dataset(target, phi, 20000)
-        model = _ESTIMATOR(2, ch.eye(2), sample.alpha)
+        model = _ESTIMATOR(ch.eye(2), sample.alpha)
         model.fit(sample.S)
         fits.append(model)
         naive.append(
@@ -125,6 +130,11 @@ def test_sierpinski_pair_is_told_apart():
         )
 
 
-def test_rejects_a_covariance_of_the_wrong_shape():
+def test_rejects_a_covariance_that_is_not_square():
     with pytest.raises(ValueError, match="covariance_matrix"):
-        _ESTIMATOR(2, ch.eye(3))
+        _ESTIMATOR(ch.ones(2, 3))
+
+
+def test_rejects_samples_wider_than_the_covariance():
+    with pytest.raises(ValueError, match="covariance_matrix"):
+        _ESTIMATOR(ch.eye(3)).fit(ch.randn(100, 2))

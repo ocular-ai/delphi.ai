@@ -16,7 +16,6 @@ ch.set_printoptions(precision=4, sci_mode=False)
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     df: ch.Tensor,
     phi: helpers.Oracle,
     hyperparameters: Optional[dict] = None,
@@ -29,9 +28,8 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_chi2.TruncatedChi2,
         target=torch.distributions.Chi2(df),
         phi=phi,
-        dims=dims,
         parameter="df_",
-        empirical=helpers.untruncated_mle(truncated_chi2.TruncatedChi2, dims),
+        empirical=helpers.untruncated_mle(truncated_chi2.TruncatedChi2),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
         baseline_must_fail=baseline_must_fail,
@@ -40,11 +38,12 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_one_dimension(known):
-    _recovers(dims=1, df=ch.tensor([4.0]), phi=lambda z: z[:, 0] > 5.0, known=known)
+    _recovers(df=ch.tensor([4.0]), phi=lambda z: z[:, 0] > 5.0, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     df = ch.tensor([4.0, 8.0])
@@ -54,9 +53,10 @@ def test_two_dimensions(known):
         target_alpha=(0.15, 0.25),
         bounds=(0.0, 100.0),
     )
-    _recovers(dims=2, df=df, phi=calibrated.phi, known=known)
+    _recovers(df=df, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     df = ch.tensor([4.0, 8.0])
@@ -66,13 +66,13 @@ def test_two_dimensions_random_half_space(known):
         target_alpha=(0.15, 0.25),
         bounds=(-50.0, 50.0),
     )
-    _recovers(dims=2, df=df, phi=calibrated.phi, known=known)
+    _recovers(df=df, phi=calibrated.phi, known=known)
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@pytest.mark.long
+@helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         df=ch.tensor([4.0]),
         phi=delphi.oracle.Identity(),
         pass_alpha=False,
@@ -81,11 +81,11 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     df = ch.linspace(2.0, 10.0, 10)
     _recovers(
-        dims=10,
         df=df,
         phi=delphi.oracle.Identity(),
         pass_alpha=False,
@@ -94,6 +94,7 @@ def test_ten_dimensions_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     df = ch.tensor([4.0])
@@ -103,9 +104,10 @@ def test_one_dimension_small_mass(known):
         target_alpha=(0.008, 0.02),
         bounds=(0.0, 100.0),
     )
-    _recovers(dims=1, df=df, phi=calibrated.phi, known=known)
+    _recovers(df=df, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     df = ch.linspace(2.0, 10.0, 10)
@@ -115,9 +117,10 @@ def test_ten_dimensions_sum_threshold(known):
         target_alpha=(0.15, 0.25),
         bounds=(0.0, 500.0),
     )
-    _recovers(dims=10, df=df, phi=calibrated.phi, known=known)
+    _recovers(df=df, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -132,8 +135,25 @@ def test_indistinguishable_pair(known):
             torch.distributions.Chi2(ch.tensor([6.0])),
         ),
         phi=lambda z: (z[:, 0] > 2.0) & (z[:, 0] < 3.0),
-        dims=1,
         parameter="df_",
-        empirical=helpers.untruncated_mle(truncated_chi2.TruncatedChi2, 1),
+        empirical=helpers.untruncated_mle(truncated_chi2.TruncatedChi2),
         known=known,
+    )
+
+
+# Seeds 0-2: KL at most 0.0054 (ema), 0.0065 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    df = ch.linspace(2.0, 10.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.Chi2(df),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 1000.0),
+    )
+    _recovers(
+        df=df,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.011, "avg": 0.013},
+        max_coordinate=0.003,
     )
