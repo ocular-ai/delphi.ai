@@ -23,7 +23,7 @@ _StatisticalConfigT = TypeVar(
 class StatisticalModel(DelphiModel[_StatisticalConfigT], Generic[_StatisticalConfigT]):
     """A delphi model fit by the trainer, then optionally refined.
 
-    A model setting ``refine_steps`` trains one parameter tensor and supplies
+    A model setting ``newton_steps`` trains one parameter tensor and supplies
     ``hessian``. Its estimates come from ``final_run``.
 
     Attributes:
@@ -63,11 +63,11 @@ class StatisticalModel(DelphiModel[_StatisticalConfigT], Generic[_StatisticalCon
     def refine(
         self, train_loader: torch.utils.data.DataLoader, rand_seed: int = 0
     ) -> Optional[delphi.trainer.ProcedureResult]:
-        """Take ``refine_steps`` Newton steps on the full sample.
+        """Take ``newton_steps`` Newton steps on the full sample.
 
         Starts from the fit's averaged iterate. Each step moves by
         ``H^-1 grad``, with ``H`` the Hessian at the current iterate, damped
-        when ``refine_damped`` is set; the model's own hooks, such as a
+        when ``newton_damped`` is set; the model's own hooks, such as a
         projection, still apply.
 
         Args:
@@ -76,7 +76,7 @@ class StatisticalModel(DelphiModel[_StatisticalConfigT], Generic[_StatisticalCon
             rand_seed: Seed applied at the start of the refinement.
 
         Returns:
-            The refinement's record, or None when ``refine_steps`` is 0.
+            The refinement's record, or None when ``newton_steps`` is 0.
 
         Raises:
             RuntimeError: If the model has not been fit.
@@ -84,7 +84,7 @@ class StatisticalModel(DelphiModel[_StatisticalConfigT], Generic[_StatisticalCon
         """
         self.refinement = None
         main = self.hyperparameters
-        if main.refine_steps == 0:
+        if main.newton_steps == 0:
             return None
         if self.procedure is None:
             raise RuntimeError(f"{type(self).__name__} has not been fit.")
@@ -123,7 +123,7 @@ class StatisticalModel(DelphiModel[_StatisticalConfigT], Generic[_StatisticalCon
             hess = self.hessian(param.detach())
             flat = grad.reshape(-1, 1).to(hess.dtype)
             step = ch.linalg.solve(hess, flat)  # pylint: disable=not-callable
-            if self.hyperparameters.refine_damped:
+            if self.hyperparameters.newton_damped:
                 step = step / (1.0 + float((flat * step).sum().clamp_min(0.0).sqrt()))
             return step.reshape(grad.shape).to(grad.dtype)
 

@@ -23,7 +23,7 @@ import torch.utils.data
 from delphi.configs.distributions.truncated import exponential_family
 from delphi.models.psgd import PSGDModel
 import delphi.oracle
-import delphi.projection_sets
+from delphi.projection_sets import sublevel
 from delphi.torchnomials import empirical, hermite, laguerre, polynomial, transformed
 import delphi.trainer
 from delphi.truncated.distributions import distributions, losses, summary
@@ -52,51 +52,6 @@ DEFAULT_TRUNCATION_SET_RHO = 0.4
 _ConfigT = TypeVar(
     "_ConfigT", bound=exponential_family.TruncatedExponentialFamilyDistributionConfig
 )
-
-
-class SublevelSet(delphi.projection_sets.ProjectionSet):
-    """The weights whose loss is at most ``level + radius``.
-
-    The exponential families keep the untruncated NLL within a budget of its
-    value at the start, per Karatapanis et al. (2025), Algorithm 2.
-
-    Attributes:
-        loss: Maps a weight to the loss the set bounds.
-        level: The loss at the anchor, which the radius is a budget above.
-    """
-
-    def __init__(
-        self,
-        anchor: ch.Tensor,
-        loss: Callable[[ch.Tensor], float],
-        radius: float,
-        bisection_steps: int = 50,
-    ):
-        """Initialize the set.
-
-        Args:
-            anchor: The weight the budget is measured from.
-            loss: Maps a weight to the loss the set bounds.
-            radius: The budget above the anchor's loss.
-            bisection_steps: As the base class; 50 leaves 2^-50 of the
-                segment.
-        """
-        super().__init__(anchor, radius, bisection_steps)
-        self.loss = loss
-        self.level = loss(self.anchor)
-
-    @property
-    def threshold(self) -> float:
-        """The largest loss inside the set."""
-        return self.level + float(self.radius or 0.0)
-
-    def contains(self, weight: ch.Tensor) -> bool:
-        return self.loss(weight) <= self.threshold
-
-    def along(self, weight: ch.Tensor, fraction: float) -> ch.Tensor:
-        # Rounds as the families' projection always has; the base class's
-        # form moved test_one_dimension_small_mass's beta prime fit far off.
-        return (1.0 - fraction) * self.anchor + fraction * weight
 
 
 class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instance-attributes
@@ -182,6 +137,8 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
                 "or omit alpha to fall back on min_radius."
             )
         self.alpha = alpha
+        # alpha bounds the radius that holds the truth, so one phase runs.
+        self.fixed_radius = alpha is not None
         self.dims = dims
         self.criterion = losses.TruncatedExponentialFamilyDistributionNLL.apply
 
@@ -381,13 +338,13 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         with ch.no_grad():
             self._write_theta(self.emp_theta)
 
-    def default_projection_set(self) -> SublevelSet:
+    def default_projection_set(self) -> sublevel.SublevelSet:
         """Anchor the NLL's sublevel set at the start point, at its first budget."""
-        projection_set = SublevelSet(
+        sublevel_set = sublevel.SublevelSet(
             self.emp_theta, self._compute_nll, self._initial_radius()
         )
-        self.nll_init = projection_set.level
-        return projection_set
+        self.nll_init = sublevel_set.level
+        return sublevel_set
 
     def post_phase_hook(
         self, result: delphi.trainer.RunResult

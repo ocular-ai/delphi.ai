@@ -12,7 +12,7 @@ import torch as ch
 
 from delphi.configs.models import psgd
 from delphi.models.statistical import StatisticalModel
-import delphi.projection_sets
+from delphi.projection_sets import projection_set
 import delphi.trainer
 
 _PSGDConfigT = TypeVar("_PSGDConfigT", bound=psgd.PSGDModelConfig)
@@ -21,15 +21,17 @@ _PSGDConfigT = TypeVar("_PSGDConfigT", bound=psgd.PSGDModelConfig)
 class PSGDModel(StatisticalModel[_PSGDConfigT], Generic[_PSGDConfigT], abc.ABC):
     """Projected SGD in phases, each widening the projection set's radius.
 
-    The first phase builds the set from ``default_projection_set``. With alpha
-    known its radius holds the truth and one phase runs. Without it the
-    radius grows by ``rate`` per phase, until a phase never projects, the
-    subclass's ``_phase_converged`` stops it, or it reaches ``max_radius``.
+    The first phase builds the set from ``default_projection_set``. When
+    ``fixed_radius`` is set that radius is known to hold the solution and
+    one phase runs. Otherwise the radius grows by ``rate`` per phase, until
+    a phase never projects, the subclass's ``_phase_converged`` stops it, or
+    it reaches ``max_radius``.
     A subclass projects its parameters in ``step_post_hook`` through
     ``project``, which counts each move.
 
     Attributes:
-        alpha: Survival mass of the truncation set, if known.
+        fixed_radius: Whether the first phase's radius holds the solution,
+            so it is never widened; a subclass sets it.
         projection_set: The set the iterates are kept in, built on the first
             phase.
         radius: The projection set's radius in the current phase.
@@ -46,14 +48,14 @@ class PSGDModel(StatisticalModel[_PSGDConfigT], Generic[_PSGDConfigT], abc.ABC):
                 ``defaults`` config.
         """
         super().__init__(hyperparameters=hyperparameters)
-        self.alpha: Optional[float] = None
-        self.projection_set: Optional[delphi.projection_sets.ProjectionSet] = None
+        self.fixed_radius = False
+        self.projection_set: Optional[projection_set.ProjectionSet] = None
         self.radius: Optional[float] = None
         self._projections: int = 0
         self._projection_distance: float = 0.0
 
     @abc.abstractmethod
-    def default_projection_set(self) -> delphi.projection_sets.ProjectionSet:
+    def default_projection_set(self) -> projection_set.ProjectionSet:
         """Return the set the first phase keeps the iterates in, at its radius."""
 
     def pre_phase_hook(self) -> None:
@@ -87,8 +89,8 @@ class PSGDModel(StatisticalModel[_PSGDConfigT], Generic[_PSGDConfigT], abc.ABC):
         A radius the phase never projected onto constrained nothing, so
         widening it would only rerun the same fit.
         """
-        if self.alpha is not None:
-            return True, "alpha_known"
+        if self.fixed_radius:
+            return True, "fixed_radius"
         if result.metrics["projections"] == 0:
             return True, self.not_binding_reason
         stop, reason = self._phase_converged(result)

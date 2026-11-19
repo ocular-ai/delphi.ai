@@ -266,7 +266,7 @@ def test_10d_seeds(seed):
 def test_summary_reports_the_classes_and_accuracy():
     simulation = _simulate_1d(_NONE, 200)
     model = truncated_multinomial_logistic_regression.TruncatedMultinomialLogisticRegression(
-        _NONE, hyperparameters={"iterations": 20, "refine_steps": 0}
+        _NONE, hyperparameters={"iterations": 20, "newton_steps": 0}
     ).fit(simulation.X, simulation.y)
     accuracy = (model.predict(simulation.X) == simulation.y).float().mean()
     assert "classes" in model.summary()

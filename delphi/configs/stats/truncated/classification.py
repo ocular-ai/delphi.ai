@@ -20,8 +20,8 @@ class TruncatedClassificationConfig(TruncatedLinearModelConfig):
         radius: ``log(1 / alpha')`` for the smallest per-label mass alpha'
             R_alpha' admits; None takes alpha' = alpha^2, or starts from
             the descent's start when alpha is unknown.
-        refine_steps: Fisher scoring steps after the descent, as
-            ``delphi.configs.models.statistical.RefinementConfig``.
+        newton_steps: Fisher scoring steps after the descent, as
+            ``delphi.configs.models.statistical.NewtonRefinementConfig``.
     """
 
     batch_size: int = 10
@@ -31,7 +31,7 @@ class TruncatedClassificationConfig(TruncatedLinearModelConfig):
     avg_burn_in: float = pydantic.Field(default=0.0, ge=0.0, lt=1.0)
     num_samples: int = pydantic.Field(default=200, ge=1)
     radius: Optional[float] = pydantic.Field(default=None, gt=0.0)
-    refine_steps: int = pydantic.Field(default=10, ge=0)
+    newton_steps: int = pydantic.Field(default=10, ge=0)
 
     @pydantic.model_validator(mode="after")
     def drop_default_schedule_off_sgd(self) -> "TruncatedClassificationConfig":
@@ -68,14 +68,14 @@ class TruncatedMultinomialLogisticRegressionConfig(TruncatedClassificationConfig
             1 / smoothness, so its noise grows with the parameter count over
             the batch; ten samples throw a margin set's iterate far from the
             truth, where the sampler's gradient is too weak to return.
-        iterations: Gradient steps of the descent. The refine steps take
+        iterations: Gradient steps of the descent. The Newton steps take
             its average to the MLE, and more steps leave the fit no
             closer to it; the gap left is the sampler's noise.
-        refine_steps: Fisher scoring steps after the descent; the average
+        newton_steps: Fisher scoring steps after the descent; the average
             is close enough by then that more only add sampler noise.
     """
 
     batch_size: int = 100
     epochs: Optional[int] = pydantic.Field(default=None, ge=1)
     iterations: Optional[int] = pydantic.Field(default=300, ge=1)
-    refine_steps: int = pydantic.Field(default=3, ge=0)
+    newton_steps: int = pydantic.Field(default=3, ge=0)

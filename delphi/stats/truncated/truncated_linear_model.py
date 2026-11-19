@@ -18,7 +18,7 @@ import torch.utils.data
 
 from delphi.configs.stats.truncated import linear
 from delphi.models.psgd import PSGDModel
-import delphi.projection_sets
+from delphi.projection_sets import projection_set
 from delphi.stats import linear_model
 import delphi.trainer
 from delphi.truncated.distributions import summary
@@ -38,16 +38,20 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
     """Projected SGD on the truncated NLL of a linear model.
 
     Subclasses supply ``criterion_parameters``, ``_hessian`` and, to
-    constrain the descent, ``_constrained_projection_set``; ``refine_steps``
+    constrain the descent, ``_constrained_projection_set``; ``newton_steps``
     adds ``StatisticalModel.refine`` after the descent.
 
-    The descent starts from ``emp_weight``: the caller's, else OLS. The
-    radius starts at the ``radius`` hyperparameter, or where alpha would put
-    it, alpha = 1 when unknown; ``PSGDModel`` runs the phases from there.
+    The descent starts from ``emp_weight`` when the caller gives one, and
+    from the OLS fit otherwise. The radius starts at the ``radius``
+    hyperparameter when set, and otherwise at the radius alpha implies,
+    taking alpha = 1 when it is unknown. ``PSGDModel`` runs the phases from
+    there.
 
     Attributes:
         phi: Truncation oracle over latents shaped (n, m, k), returning a
             mask or a survival probability.
+        alpha: Survival probability of the truncation set, or None if
+            unknown.
         rand_seed: Seed applied at the start of every run.
     """
 
@@ -89,6 +93,8 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
         )
         self.phi = phi
         self.alpha = alpha
+        # alpha bounds the radius that holds the truth, so one phase runs.
+        self.fixed_radius = alpha is not None
         self.rand_seed = rand_seed
         self.trainer: Optional[delphi.trainer.Trainer] = None
         self._data: Optional[tuple[ch.Tensor, ch.Tensor]] = None
@@ -136,7 +142,7 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
         X: ch.Tensor,  # pylint: disable=invalid-name
         y: ch.Tensor,
         radius: float,
-    ) -> delphi.projection_sets.ProjectionSet:
+    ) -> projection_set.ProjectionSet:
         """Return the convex set the descent is kept in.
 
         Args:
@@ -148,7 +154,7 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
             The whole space, unless a subclass constrains it.
         """
         del X, y
-        return delphi.projection_sets.Unconstrained(self.emp_start, radius)
+        return projection_set.Unconstrained(self.emp_start, radius)
 
     def default_radius(self) -> float:
         """Return the first phase's radius absent the radius hyperparameter.
@@ -227,12 +233,12 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
         )
         return train_loader, None
 
-    def default_projection_set(self) -> delphi.projection_sets.ProjectionSet:
+    def default_projection_set(self) -> projection_set.ProjectionSet:
         """Return ``_constrained_projection_set``, or the whole space if disabled."""
         hp = self.hyperparameters
         radius = self.default_radius() if hp.radius is None else hp.radius
         if hp.projection_set != "default":
-            return delphi.projection_sets.Unconstrained(self.emp_start, radius)
+            return projection_set.Unconstrained(self.emp_start, radius)
         X, y = linear_model.require_fitted(self._data, "data")  # pylint: disable=invalid-name
         return self._constrained_projection_set(X, y, radius)
 
@@ -241,11 +247,11 @@ class TruncatedLinearModel(  # pylint: disable=too-many-instance-attributes
         first = self.projection_set is None
         super().pre_phase_hook()
         if first and "weight" in self._parameters:
-            projection_set = linear_model.require_fitted(
+            feasible_set = linear_model.require_fitted(
                 self.projection_set, "projection_set"
             )
             with ch.no_grad():
-                self.weight.copy_(projection_set.project(self.weight))
+                self.weight.copy_(feasible_set.project(self.weight))
 
     def step_post_hook(self, optimizer, args, kwargs) -> None:
         """Project the weight back onto the projection set."""

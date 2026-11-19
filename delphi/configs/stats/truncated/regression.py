@@ -18,8 +18,8 @@ class TruncatedRegressionConfig(TruncatedLinearModelConfig):
     Attributes:
         weight_bound: The B of the projection set, on the weight in the
             normalized coordinates the descent runs in; None drops the ball.
-        refine_steps: Newton steps after the descent, as
-            ``delphi.configs.models.statistical.RefinementConfig``; on by
+        newton_steps: Newton steps after the descent, as
+            ``delphi.configs.models.statistical.NewtonRefinementConfig``; on by
             default here.
         information_samples: Kept draws per sample for the conditional
             moments behind ``covariance``'s information matrix; a sample's
@@ -35,7 +35,7 @@ class TruncatedRegressionConfig(TruncatedLinearModelConfig):
     )
     avg_burn_in: float = pydantic.Field(default=0.0, ge=0.0, lt=1.0)
     weight_bound: Optional[float] = pydantic.Field(default=None, gt=0.0)
-    refine_steps: int = pydantic.Field(default=30, ge=0)
+    newton_steps: int = pydantic.Field(default=30, ge=0)
     information_samples: int = pydantic.Field(default=1000, ge=2)
 
     @pydantic.model_validator(mode="after")
@@ -68,8 +68,8 @@ class TruncatedUnknownVarianceRegressionConfig(TruncatedRegressionConfig):
         avg_burn_in: Half, since the descent starts at OLS, far from the
             optimum along the precision, and an average over every iterate
             keeps that transient.
-        refine_steps: Off; see above.
-        refine_damped: On, for refine_steps set, since a full Newton step
+        newton_steps: Off; see above.
+        newton_damped: On, for newton_steps set, since a full Newton step
             can overshoot lambda to where phi keeps almost no mass.
         variance_lr_scale: The precision's learning rate as a multiple of
             the weight's, at every step of the descent's schedule.
@@ -79,8 +79,8 @@ class TruncatedUnknownVarianceRegressionConfig(TruncatedRegressionConfig):
     epochs: Optional[int] = pydantic.Field(default=None, ge=1)
     iterations: Optional[int] = pydantic.Field(default=5000, ge=1)
     avg_burn_in: float = pydantic.Field(default=0.5, ge=0.0, lt=1.0)
-    refine_steps: int = pydantic.Field(default=0, ge=0)
-    refine_damped: bool = True
+    newton_steps: int = pydantic.Field(default=0, ge=0)
+    newton_damped: bool = True
     variance_lr_scale: float = pydantic.Field(default=1.0, gt=0.0)
 
 
@@ -112,7 +112,7 @@ class TruncatedLinearDynamicalSystemConfig(TruncatedRegressionConfig):
     constant: bool = True
     scheduler: Optional[str] = None
     avg_burn_in: float = pydantic.Field(default=0.5, ge=0.0, lt=1.0)
-    refine_steps: int = pydantic.Field(default=0, ge=0)
+    newton_steps: int = pydantic.Field(default=0, ge=0)
 
 
 class TruncatedLassoRegressionConfig(TruncatedLinearModelConfig):

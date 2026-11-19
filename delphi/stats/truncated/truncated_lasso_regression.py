@@ -19,7 +19,7 @@ from typing import Optional, Union, cast
 import torch as ch
 
 from delphi.configs.stats.truncated import regression
-import delphi.projection_sets
+from delphi.projection_sets import projection_set, residual
 from delphi.stats.linear import lasso
 from delphi.stats.truncated import losses
 from delphi.stats.truncated.truncated_linear_model import TruncatedLinearModel
@@ -217,9 +217,9 @@ class TruncatedLassoRegression(
         X: ch.Tensor,  # pylint: disable=invalid-name
         y: ch.Tensor,
         radius: float,
-    ) -> delphi.projection_sets.ProjectionSet:
+    ) -> projection_set.ProjectionSet:
         """Return E_r around the training data."""
-        return ResidualBall(X, y, radius, self.emp_start)
+        return residual.ResidualBall(X, y, radius, self.emp_start)
 
     def compute_loss(self, batch, criterion=None) -> ch.Tensor:
         """Return the batch's mean NLL plus the penalty on the coefficients."""
@@ -241,88 +241,3 @@ class TruncatedLassoRegression(
     def __str__(self):
         """Return a human-readable name for this model."""
         return "truncated lasso regression, known variance"
-
-
-class ResidualBall(delphi.projection_sets.ProjectionSet):
-    """The set ``E_r = {w : ||X w - y||_2 <= r sqrt(n)}``.
-
-    A projection returns the Euclidean nearest point, ``(I + mu X^T X)^-1
-    (w + mu X^T y)`` for the mu that lands it on the boundary: with
-    ``X = U diag(s) V^T``, the residual there is
-    ``||(s V^T w - U^T y) / (1 + mu s^2)||^2`` plus the part of y outside
-    U's span, which is decreasing in mu, so mu is bisected.
-
-    Attributes:
-        radius: The set's r.
-    """
-
-    # Slack on the boundary, so float32 rounding of a projected point does
-    # not leave it outside.
-    _SLACK = 1e-5
-
-    def __init__(
-        self,
-        X: ch.Tensor,  # pylint: disable=invalid-name
-        y: ch.Tensor,
-        radius: float,
-        anchor: ch.Tensor,
-        bisection_steps: int = 100,
-    ):
-        """Build E_r from the training data.
-
-        Args:
-            X: Design matrix, shaped (n, p).
-            y: Responses, shaped (n, 1).
-            radius: The set's r.
-            anchor: A weight in the set, shaped (p, 1).
-            bisection_steps: Halvings of the interval mu is searched in.
-        """
-        super().__init__(anchor, radius, bisection_steps)
-        self._X, self._y = X.double(), y.double()  # pylint: disable=invalid-name
-        u, self._spectrum, self._basis = ch.linalg.svd(self._X, full_matrices=False)  # pylint: disable=not-callable
-        kept = self._spectrum > self._spectrum.max() * 1e-12
-        u, self._spectrum = u[:, kept], self._spectrum[kept]
-        self._basis = self._basis[kept]
-        self._projected_y = u.T @ self._y
-        self._outside = float((self._y.pow(2).sum() - self._projected_y.pow(2).sum()))
-
-    def _bound(self) -> float:
-        return cast(float, self.radius) * math.sqrt(self._X.size(0))
-
-    def contains(self, weight: ch.Tensor) -> bool:
-        residual = float((self._X @ weight.detach().double() - self._y).norm())
-        return residual <= self._bound() * (1.0 + self._SLACK)
-
-    def project(self, weight: ch.Tensor) -> ch.Tensor:
-        """Return the Euclidean nearest point of the set to weight.
-
-        Raises:
-            ValueError: If the set is empty, as when y lies further than
-                the bound from X's column span.
-        """
-        if self.contains(weight):
-            return weight
-        bound = self._bound()
-        if self._outside > bound**2:
-            raise ValueError(
-                f"E_r is empty: no weight has a residual norm within {bound:.4f}."
-            )
-        point = weight.detach().double()
-        offset = self._spectrum[:, None] * (self._basis @ point) - self._projected_y
-
-        def residual(mu: float) -> float:
-            shrunk = offset / (1.0 + mu * self._spectrum[:, None].pow(2))
-            return float(shrunk.pow(2).sum()) + max(self._outside, 0.0)
-
-        low, high = 0.0, 1.0
-        while residual(high) > bound**2:
-            high *= 2.0
-        for _ in range(self.bisection_steps):
-            middle = (low + high) / 2.0
-            if residual(middle) > bound**2:
-                low = middle
-            else:
-                high = middle
-        spectrum = self._spectrum[:, None]
-        step = -high * spectrum * offset / (1.0 + high * spectrum.pow(2))
-        return (point + self._basis.T @ step).to(weight.dtype)
