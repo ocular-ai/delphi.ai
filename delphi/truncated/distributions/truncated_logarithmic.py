@@ -22,7 +22,7 @@ class TruncatedLogarithmic(
 ):
     """Model for truncated logarithmic distributions."""
 
-    dist = logarithmic.Logarithmic
+    family = logarithmic.Logarithmic
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("probs_",)
 
@@ -61,26 +61,6 @@ class TruncatedLogarithmic(
     def _constraints(self, theta):
         """Clamp theta to be strictly negative, so the probs stay below one."""
         return ch.clamp(theta, max=-1e-6)
-
-    @property
-    def best_probs_(self):
-        """Return the best probs estimate."""
-        return logarithmic.Logarithmic.to_canonical(self.best_params)
-
-    @property
-    def final_probs_(self):
-        """Return the final probs estimate."""
-        return logarithmic.Logarithmic.to_canonical(self.final_params)
-
-    @property
-    def ema_probs_(self):
-        """Return the EMA probs estimate."""
-        return logarithmic.Logarithmic.to_canonical(self.ema_params)
-
-    @property
-    def avg_probs_(self):
-        """Return the averaged probs estimate."""
-        return logarithmic.Logarithmic.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

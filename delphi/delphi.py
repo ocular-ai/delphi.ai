@@ -180,9 +180,7 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
         return [{"params": list(self.parameters())}]
 
     def make_optimizer_and_schedule(
-        self,
-        checkpoint: Optional[dict] = None,
-        hessian: Optional[Callable[..., ch.Tensor]] = None,
+        self, checkpoint: Optional[dict] = None, warm_start: bool = False
     ) -> tuple[torch.optim.Optimizer, Optional[torch.optim.lr_scheduler.LRScheduler]]:
         """Create and store the optimizer and learning-rate scheduler.
 
@@ -192,8 +190,8 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
 
         Args:
             checkpoint: Optional dict containing optimizer/scheduler state to restore.
-            hessian: The trained criterion's Hessian, for a stage whose
-                criterion is not the model's own; ``self.hessian`` by default.
+            warm_start: Whether the run is the warm start, which trains
+                ``warm_start_criterion`` instead of the model's own.
 
         Returns:
             Tuple of (optimizer, scheduler).
@@ -204,12 +202,38 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
         self.optimizer.register_step_pre_hook(self.step_pre_hook)
         self.optimizer.register_step_post_hook(self.step_post_hook)
 
-        self.schedule = self._create_scheduler(hessian)
+        self.schedule = self._create_scheduler(
+            self._choose_schedule_hessian(warm_start)
+        )
 
         if checkpoint:
             self._load_checkpoint(checkpoint)
 
         return self.optimizer, self.schedule
+
+    def _choose_schedule_hessian(
+        self, warm_start: bool
+    ) -> Optional[Callable[..., ch.Tensor]]:
+        """Return the Hessian the fisher schedule reads; None reads ``hessian``.
+
+        A preconditioned model overrides this to set up its preconditioner
+        and return the Hessian in the whitened coordinates.
+
+        Raises:
+            ValueError: If the warm start runs under the fisher scheduler
+                without ``warm_start_hessian``.
+        """
+        if not warm_start:
+            return None
+        if (
+            self.warm_start_hessian is None
+            and self._get_scheduler_type() is constants.SchedulerType.FISHER
+        ):
+            raise ValueError(
+                f"{self} warm-starts under the fisher scheduler but has no "
+                "warm_start_hessian; its hessian belongs to the main criterion."
+            )
+        return self.warm_start_hessian
 
     @classmethod
     def register_optimizer(cls, name: str, factory: Callable) -> None:
@@ -361,7 +385,7 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
         """Create and return the configured learning-rate scheduler, or None.
 
         Args:
-            hessian: As ``make_optimizer_and_schedule``.
+            hessian: The Hessian to read; ``self.hessian`` when None.
         """
         if self.hyperparameters.constant:
             return None
@@ -385,7 +409,7 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
 
         Args:
             scheduler_type: Key into ``SCHEDULER_SECTIONS``.
-            hessian: As ``make_optimizer_and_schedule``.
+            hessian: The Hessian to read; ``self.hessian`` when None.
 
         Returns:
             The constructed scheduler.
@@ -447,7 +471,7 @@ class DelphiModel(ch.nn.Module, Generic[base.ConfigT]):  # pylint: disable=too-m
         Args:
             current: Measure at the current iterate rather than at the
                 model's default point, its initialization.
-            hessian: As ``make_optimizer_and_schedule``.
+            hessian: The Hessian to read; ``self.hessian`` when None.
 
         Returns:
             Tuple of (mu, smoothness) from this model's Hessian.

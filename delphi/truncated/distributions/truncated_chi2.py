@@ -19,7 +19,7 @@ class TruncatedChi2(
 ):
     """Model for truncated chi-squared distributions."""
 
-    dist = chi2.Chi2
+    family = chi2.Chi2
     defaults = exponential_family_configs.WarmStartedExponentialFamilyDistributionConfig
     estimate_suffixes = ("df_",)
 
@@ -48,26 +48,6 @@ class TruncatedChi2(
     def _constraints(self, theta):
         """Clamp theta above -1, so the degrees of freedom are positive."""
         return ch.clamp(theta, min=-1.0 + 1e-6)
-
-    @property
-    def best_df_(self):
-        """Return the best degrees of freedom estimate."""
-        return chi2.Chi2.to_canonical(self.best_params)
-
-    @property
-    def final_df_(self):
-        """Return the final degrees of freedom estimate."""
-        return chi2.Chi2.to_canonical(self.final_params)
-
-    @property
-    def ema_df_(self):
-        """Return the EMA degrees of freedom estimate."""
-        return chi2.Chi2.to_canonical(self.ema_params)
-
-    @property
-    def avg_df_(self):
-        """Return the averaged degrees of freedom estimate."""
-        return chi2.Chi2.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""
