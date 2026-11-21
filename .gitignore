@@ -124,3 +124,6 @@ CLAUDE.md
 
 # Claude Code worktrees and session state.
 .claude/
+
+# Local coding-agent instructions.
+/AGENTS.md
