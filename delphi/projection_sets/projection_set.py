@@ -1,11 +1,10 @@
 # Author: pstefanou12@
-"""Convex sets that projected SGD keeps a model's parameters in.
+"""The base of the convex sets projected SGD keeps a model's parameters in.
 
-Each set holds a feasible anchor.
-A point outside moves along the segment to the anchor until it re-enters the
-set. That is not the Euclidean projection, but the point it returns lies in
-the set, where the truncated NLL is strongly convex and the stochastic
-gradient has bounded variance.
+Each set holds a feasible anchor. A set that defines only ``contains``
+projects a point outside by bisecting the segment from the anchor to it,
+which is not the Euclidean projection but returns a point of the set; a set
+with a closed-form projection overrides ``project``.
 """
 
 import abc
@@ -58,14 +57,18 @@ class ProjectionSet(abc.ABC):
         if self.contains(weight):
             return weight
         inside, outside = 0.0, 1.0
-        direction = weight.detach() - self.anchor
+        weight = weight.detach()
         for _ in range(self.bisection_steps):
             middle = (inside + outside) / 2.0
-            if self.contains(self.anchor + middle * direction):
+            if self.contains(self.along(weight, middle)):
                 inside = middle
             else:
                 outside = middle
-        return self.anchor + inside * direction
+        return self.along(weight, inside)
+
+    def along(self, weight: ch.Tensor, fraction: float) -> ch.Tensor:
+        """Return the point that fraction of the way from the anchor to weight."""
+        return (1.0 - fraction) * self.anchor + fraction * weight
 
 
 class Unconstrained(ProjectionSet):

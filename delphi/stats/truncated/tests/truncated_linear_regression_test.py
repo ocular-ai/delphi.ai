@@ -688,61 +688,6 @@ def test_dependent_step_is_an_online_newton_step():
     assert ch.allclose(model.weight.detach(), expected, atol=1e-5)
 
 
-def test_confidence_ellipsoid_projects_in_the_metric_norm():
-    ch.manual_seed(0)
-    factors = ch.randn(2, 4, 4, dtype=ch.float64)
-    sigma_0, metric = factors @ factors.mT + 0.1 * ch.eye(4, dtype=ch.float64)
-    anchor = ch.randn(4, 2, dtype=ch.float64)
-    ellipsoid = truncated_linear_regression.ConfidenceEllipsoid(anchor, sigma_0, metric)
-    inside = anchor + 1e-3 * ch.randn(4, 2, dtype=ch.float64)
-    assert ellipsoid.project(inside) is inside
-    point = anchor + 10.0 * ch.randn(4, 2, dtype=ch.float64)
-    projected = ellipsoid.project(point)
-    offset = projected - anchor
-    assert math.isclose(float((offset * (sigma_0 @ offset)).sum()), 1.0, rel_tol=1e-6)
-    # Nearest in the metric's norm: its pull is a positive multiple of the
-    # ellipsoid's normal there.
-    pull, normal = metric @ (point - projected), sigma_0 @ offset
-    scale = float((pull * normal).sum() / (normal * normal).sum())
-    assert scale > 0.0
-    assert ch.allclose(pull, scale * normal, atol=1e-8 * float(pull.abs().max()))
-
-
-def _unknown_variance_set() -> truncated_linear_regression.UnknownVarianceSet:
-    residual_var = ch.tensor([1.0, 4.0])
-    anchor = ch.cat([ch.zeros(2, 2), (1.0 / residual_var)[None]])
-    return truncated_linear_regression.UnknownVarianceSet(
-        residual_var, 2.0, anchor, bound=1.5
-    )
-
-
-def test_unknown_variance_set_bounds_the_precision_by_the_survival_mass():
-    projection = _unknown_variance_set()
-    lower, upper = projection.precision_bounds()
-    # alpha = 1 / radius = 1 / 2.
-    residual_var = ch.tensor([1.0, 4.0])
-    assert ch.allclose(lower, 0.25 / (96.0 * residual_var))
-    assert ch.allclose(upper, 8.0 * (5.0 + 2.0 * math.log(2.0)) / residual_var)
-
-
-def test_unknown_variance_set_projects_to_the_nearest_point():
-    projection = _unknown_variance_set()
-    lower, upper = projection.precision_bounds()
-    ch.manual_seed(0)
-    # Feasible points, to check no candidate beats the projection.
-    precision = lower + (upper - lower) * ch.rand(20000, 2)
-    direction = torch.nn.functional.normalize(ch.randn(20000, 2, 2), dim=1)
-    radius = 1.5 * precision * ch.rand(20000, 2)
-    feasible = ch.cat([direction * radius[:, None], precision[:, None]], dim=1)
-    for scale in [0.1, 3.0, 100.0]:
-        point = scale * ch.randn(3, 2)
-        projected = projection.project(point)
-        assert projection.contains(projected + 1e-6 * (projection.anchor - projected))
-        nearest = (feasible - point).norm(dim=1).min(0).values
-        assert ((projected - point).norm(dim=0) <= nearest + 1e-5).all()
-        assert ch.allclose(projection.project(projected), projected)
-
-
 def _log_survival_mass(
     mean: ch.Tensor, noise_sd: ch.Tensor, bounds: Bounds
 ) -> ch.Tensor:

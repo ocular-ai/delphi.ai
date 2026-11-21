@@ -16,7 +16,7 @@ import torch as ch
 import torch.optim
 
 from delphi.configs.stats.truncated import classification
-import delphi.projection_sets
+from delphi.projection_sets import projection_set
 from delphi.stats import linear_model
 from delphi.stats.truncated.truncated_linear_model import TruncatedLinearModel
 from delphi.utils import constants
@@ -130,13 +130,24 @@ class TruncatedClassification(
         """
 
     @abc.abstractmethod
-    def _projection_set(
+    def _label_mass_set(
         self,
         X: ch.Tensor,  # pylint: disable=invalid-name
         anchor: ch.Tensor,
         radius: float,
-    ) -> delphi.projection_sets.ProjectionSet:
-        """Return R_alpha at radius ``log(1 / alpha')``, holding anchor."""
+    ) -> projection_set.ProjectionSet:
+        """Return R_alpha, the set the descent is kept in.
+
+        R_alpha holds the weights at which every training sample keeps
+        untruncated mass at least ``alpha' = e^-radius`` on each label, per
+        ``_label_mass``. ``_constrained_projection_set`` grows the radius
+        until the set holds the anchor.
+
+        Args:
+            X: Training covariates, shaped (n, d).
+            anchor: The weight projections move towards.
+            radius: ``log(1 / alpha')``.
+        """
 
     def _calc_emp_model(self, X: ch.Tensor, y: ch.Tensor) -> None:  # pylint: disable=invalid-name
         """Set emp_weight to the naive fit unless given, and register it."""
@@ -190,12 +201,12 @@ class TruncatedClassification(
         mass = self._label_mass(X @ self.emp_start).min()
         return min(-math.log(max(float(mass), 1e-300)), _MAX_START_RADIUS)
 
-    def build_projection_set(
+    def _constrained_projection_set(
         self,
         X: ch.Tensor,  # pylint: disable=invalid-name
         y: ch.Tensor,
         radius: float,
-    ) -> delphi.projection_sets.ProjectionSet:
+    ) -> projection_set.ProjectionSet:
         """Return R_alpha anchored at emp_weight, its radius grown to hold it.
 
         Raises:
@@ -204,7 +215,7 @@ class TruncatedClassification(
         """
         del y
         anchor = self.emp_start
-        projection = self._projection_set(X, anchor, radius)
+        projection = self._label_mass_set(X, anchor, radius)
         while not projection.contains(anchor):
             if radius >= _MAX_START_RADIUS:
                 raise ValueError(

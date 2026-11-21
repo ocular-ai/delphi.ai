@@ -19,7 +19,7 @@ import torch as ch
 import torch.nn.functional
 
 from delphi.configs.stats.truncated import classification
-import delphi.projection_sets
+from delphi.projection_sets import projection_set
 from delphi.stats import linear_model
 from delphi.stats.truncated import losses
 from delphi.stats.truncated.truncated_classification import (
@@ -28,7 +28,9 @@ from delphi.stats.truncated.truncated_classification import (
 from delphi.truncated import sampling
 
 
-class TruncatedMultinomialLogisticRegression(
+# Over all of delphi/, astroid fails to infer the subscripted base, so pylint
+# sees super() as empty; the file alone lints clean.
+class TruncatedMultinomialLogisticRegression(  # pylint: disable=no-member
     TruncatedClassification[classification.TruncatedMultinomialLogisticRegressionConfig]
 ):
     """Truncated multinomial logistic regression over labels 0, ..., K - 1.
@@ -89,14 +91,18 @@ class TruncatedMultinomialLogisticRegression(
         """Return each sample's untruncated label probabilities."""
         return ch.softmax(self._latent_mean(linear).double(), dim=1)
 
-    def _projection_set(
+    def _label_mass_set(
         self,
         X: ch.Tensor,  # pylint: disable=invalid-name
         anchor: ch.Tensor,
         radius: float,
-    ) -> delphi.projection_sets.ProjectionSet:
+    ) -> projection_set.ProjectionSet:
+        """Return the whole space: the descent here is unconstrained.
+
+        No analysis yet shows that the multinomial needs R_alpha.
+        """
         del X
-        return delphi.projection_sets.Unconstrained(anchor, radius)
+        return projection_set.Unconstrained(anchor, radius)
 
     def _hessian(self, X: ch.Tensor, weight: ch.Tensor) -> ch.Tensor:  # pylint: disable=invalid-name
         """Return the NLL's Fisher information in classes 1 to K - 1."""

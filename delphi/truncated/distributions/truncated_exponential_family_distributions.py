@@ -22,7 +22,9 @@ import torch.utils.data
 
 from delphi.configs.distributions.truncated import exponential_family
 from delphi.exponential_family import exponential_family_distribution
+from delphi.models.psgd import PSGDModel
 import delphi.oracle
+from delphi.projection_sets import sublevel
 from delphi.torchnomials import empirical, hermite, laguerre, polynomial, transformed
 import delphi.trainer
 from delphi.truncated.distributions import distributions, losses, summary
@@ -56,7 +58,10 @@ _ConfigT = TypeVar(
 
 
 class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instance-attributes
-    distributions.Distribution[_ConfigT], Generic[_ConfigT], abc.ABC
+    PSGDModel[_ConfigT],
+    distributions.Distribution[_ConfigT],
+    Generic[_ConfigT],
+    abc.ABC,
 ):
     """Base class for truncated exponential family distribution models.
 
@@ -92,9 +97,9 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         avg_params: Running-average natural parameters.
         train_loader_: Training data loader, set during fit.
         val_loader_: Validation data loader, set during fit.
-        nll_init: Non-truncated NLL at the empirical initialization theta_0.
-        radius (float): Current NLL budget above nll_init for the sublevel-set
-            projection (Karatapanis et al., Algorithm 2).
+        nll_init: Non-truncated NLL at the empirical initialization theta_0,
+            the level the sublevel-set projection's budget, ``radius``, is
+            above.
     """
 
     # Cov[T(z)] is diagonal up to sampling noise for a product family, so
@@ -154,6 +159,8 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
                 "or omit alpha to fall back on min_radius."
             )
         self.alpha = alpha
+        # alpha bounds the radius that holds the truth, so one phase runs.
+        self.fixed_radius = alpha is not None
         # The sample's width, which fit reads.
         self.dims = 0
         self.criterion = losses.TruncatedExponentialFamilyDistributionNLL.apply
@@ -168,17 +175,12 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         # Attributes initialized during fit.
         self.train_loader_: Optional[torch.utils.data.DataLoader] = None
         self.val_loader_: Optional[torch.utils.data.DataLoader] = None
-        self.radius: Optional[float] = None
         self.trainer: Optional[delphi.trainer.Trainer] = None
         self.procedure: Optional[delphi.trainer.ProcedureResult] = None
         self.n_samples_: Optional[int] = None
         self._emp_theta: Optional[ch.Tensor] = None
-        # The projection's anchor, set once the start point is final.
+        # The projection's level, set once the start point is final.
         self.nll_init: Optional[float] = None
-        # Running totals, and their values when the current run began, so
-        # run_metrics reports each run's own.
-        self._projections, self._projection_distance = 0, 0.0
-        self._run_start = (0, 0.0)
         self._previous_phase_loss: Optional[float] = None
         # The inverse curvature each step multiplies the gradient by, when
         # the config asks for preconditioning; set per run.
@@ -281,8 +283,8 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         )
 
         self.n_samples_ = S.size(0)
-        self._projections, self._projection_distance = 0, 0.0
-        self.nll_init, self.radius, self._previous_phase_loss = None, None, None
+        self.projection_set, self.radius = None, None
+        self.nll_init, self._previous_phase_loss = None, None
         # _calc_emp_model registers a fresh theta, which needs its own hook.
         self._gradient_hook = None
         self._calc_emp_model()
@@ -406,24 +408,13 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         with ch.no_grad():
             self._write_theta(self.emp_theta)
 
-    def pre_phase_hook(self) -> None:
-        """Start the projection before the first phase; mark each phase's counts."""
-        if self.radius is None:
-            self._start_projection()
-        self._run_start = (self._projections, self._projection_distance)
-
-    def _start_projection(self) -> None:
-        """Anchor the projection at the start point, with its first budget."""
-        self.nll_init = self._compute_nll(self.emp_theta)
-        self.radius = self._initial_radius()
-
-    def run_metrics(self) -> dict:
-        """Return the budget the run used and how often it projected."""
-        return {
-            "radius": self.radius,
-            "projections": self._projections - self._run_start[0],
-            "projection_distance": self._projection_distance - self._run_start[1],
-        }
+    def default_projection_set(self) -> sublevel.SublevelSet:
+        """Anchor the NLL's sublevel set at the start point, at its first budget."""
+        sublevel_set = sublevel.SublevelSet(
+            self.emp_theta, self._compute_nll, self._initial_radius()
+        )
+        self.nll_init = sublevel_set.level
+        return sublevel_set
 
     def post_phase_hook(
         self, result: delphi.trainer.RunResult
@@ -437,25 +428,15 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         nothing, so widening it would only rerun the same fit, and widening
         stops once it no longer improves the loss.
         """
-        if self.alpha is not None:
-            return True, "alpha_known"
-        if result.metrics["projections"] == 0:
-            return True, "budget_not_binding"
-        stop, reason = self._phase_loss_converged(result)
-        if stop:
-            return stop, reason
-        previous = _required(self.radius, "radius")
-        if previous >= self.hyperparameters.max_radius:
-            return True, "max_radius"
-        self.radius = min(
-            previous * self.hyperparameters.rate, self.hyperparameters.max_radius
-        )
-        self.logger.info(
-            f"widening the projection budget {previous:.4f} -> {self.radius:.4f}"
-        )
-        return False, None
+        previous = self.radius
+        stop, reason = super().post_phase_hook(result)
+        if not stop:
+            self.logger.info(
+                f"widening the projection budget {previous:.4f} -> {self.radius:.4f}"
+            )
+        return stop, reason
 
-    def _phase_loss_converged(
+    def _phase_converged(
         self, result: delphi.trainer.RunResult
     ) -> tuple[bool, Optional[str]]:
         """Compare this phase's best loss with the previous phase's."""
@@ -641,38 +622,6 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
             D = self.dist(theta, self.dims)  # pylint: disable=invalid-name
             return -D.log_prob(S).mean().item()
 
-    def _project_onto_sublevel_set(self, theta: ch.Tensor) -> ch.Tensor:
-        """Project theta onto {θ : L(θ) ≤ nll_threshold} via bisection.
-
-        Performs binary search on the interpolation weight λ ∈ [0, 1] along
-        the segment θ(λ) = (1−λ)·emp_theta + λ·theta.  At λ=0 the point is
-        emp_theta, which always satisfies the constraint.  At λ=1 the point is
-        theta, which may violate it.  The search finds the largest feasible λ,
-        giving the boundary point closest to theta along this segment.
-
-        Args:
-            theta: Current parameter vector to project.
-
-        Returns:
-            Projected parameter vector satisfying the NLL constraint.
-        """
-        if self._compute_nll(theta) <= self.nll_threshold:
-            return theta
-
-        emp = self.emp_theta.detach()
-        lambda_lo, lambda_hi = 0.0, 1.0
-        for _ in range(50):  # 50 iterations → ~2^{-50} precision on λ
-            lambda_mid = (lambda_lo + lambda_hi) / 2.0
-            theta_mid = (1.0 - lambda_mid) * emp + lambda_mid * theta.detach()
-            if self._compute_nll(theta_mid) <= self.nll_threshold:
-                lambda_lo = lambda_mid
-            else:
-                lambda_hi = lambda_mid
-        projected = (1.0 - lambda_lo) * emp + lambda_lo * theta.detach()
-        self._projections += 1
-        self._projection_distance += float((projected - theta.detach()).norm())
-        return projected
-
     def summary(self) -> str:
         """Return a plain-text report on how the fit went.
 
@@ -729,11 +678,9 @@ class TruncatedExponentialFamilyDistribution(  # pylint: disable=too-many-instan
         """
         with ch.no_grad():
             self._write_theta(self._constraints(self.theta))
-            # Before nll_init is set, as during a warm start, there is no
-            # sublevel set to project onto.
-            if self.hyperparameters.project and self.nll_init is not None:
-                proj_theta = self._project_onto_sublevel_set(self.theta)
-                self._write_theta(self._constraints(proj_theta))
+            # A warm start runs before the first phase builds the set.
+            if self.hyperparameters.project and self.projection_set is not None:
+                self._write_theta(self._constraints(self.project(self.theta)))
 
     def _write_theta(self, value: ch.Tensor) -> None:
         """Write a projected theta value back to the parameter storage."""
