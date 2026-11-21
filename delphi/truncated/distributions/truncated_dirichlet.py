@@ -19,7 +19,7 @@ class TruncatedDirichlet(
 ):
     """Model for truncated Dirichlet distributions."""
 
-    dist = dirichlet.Dirichlet
+    family = dirichlet.Dirichlet
     defaults = exponential_family_configs.WarmStartedExponentialFamilyDistributionConfig
     estimate_suffixes = ("concentration_",)
     # The categories share one normalizer, so they are coupled.
@@ -28,7 +28,6 @@ class TruncatedDirichlet(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -37,11 +36,10 @@ class TruncatedDirichlet(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of categories.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _calc_emp_model(self):
         """Start at the moment estimate, refined by the warm start."""
@@ -55,26 +53,6 @@ class TruncatedDirichlet(
     def _constraints(self, theta):
         """Clamp theta above -1, so every concentration is positive."""
         return ch.clamp(theta, min=-1.0 + 1e-6)
-
-    @property
-    def best_concentration_(self):
-        """Return the best concentration estimate."""
-        return dirichlet.Dirichlet.to_canonical(self.best_params)
-
-    @property
-    def final_concentration_(self):
-        """Return the final concentration estimate."""
-        return dirichlet.Dirichlet.to_canonical(self.final_params)
-
-    @property
-    def ema_concentration_(self):
-        """Return the EMA concentration estimate."""
-        return dirichlet.Dirichlet.to_canonical(self.ema_params)
-
-    @property
-    def avg_concentration_(self):
-        """Return the averaged concentration estimate."""
-        return dirichlet.Dirichlet.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

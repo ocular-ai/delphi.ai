@@ -19,7 +19,7 @@ class TruncatedGammaUnknownConcentration(
 ):
     """Model for truncated Gamma distributions with unknown shape and rate."""
 
-    dist = gamma_unknown_concentration.GammaUnknownConcentration
+    family = gamma_unknown_concentration.GammaUnknownConcentration
     defaults = (
         gamma_unknown_concentration_configs.TruncatedGammaUnknownConcentrationConfig
     )
@@ -30,7 +30,6 @@ class TruncatedGammaUnknownConcentration(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -39,11 +38,10 @@ class TruncatedGammaUnknownConcentration(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of dimensions.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _calc_emp_model(self):
         """Start at the moment estimate, refined by the warm start."""
@@ -64,55 +62,6 @@ class TruncatedGammaUnknownConcentration(
                 theta[self.dims :].clamp(max=-1e-6),
             ]
         )
-
-    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ch.Tensor]:
-        """Split theta's canonical form into the shape and the rate."""
-        concentration, rate = (
-            gamma_unknown_concentration.GammaUnknownConcentration.to_canonical(
-                theta
-            ).split(self.dims)
-        )
-        return concentration, rate
-
-    @property
-    def best_concentration_(self):
-        """Return the best shape estimate."""
-        return self._canonical(self.best_params)[0]
-
-    @property
-    def final_concentration_(self):
-        """Return the final shape estimate."""
-        return self._canonical(self.final_params)[0]
-
-    @property
-    def ema_concentration_(self):
-        """Return the EMA shape estimate."""
-        return self._canonical(self.ema_params)[0]
-
-    @property
-    def avg_concentration_(self):
-        """Return the averaged shape estimate."""
-        return self._canonical(self.avg_params)[0]
-
-    @property
-    def best_rate_(self):
-        """Return the best rate estimate."""
-        return self._canonical(self.best_params)[1]
-
-    @property
-    def final_rate_(self):
-        """Return the final rate estimate."""
-        return self._canonical(self.final_params)[1]
-
-    @property
-    def ema_rate_(self):
-        """Return the EMA rate estimate."""
-        return self._canonical(self.ema_params)[1]
-
-    @property
-    def avg_rate_(self):
-        """Return the averaged rate estimate."""
-        return self._canonical(self.avg_params)[1]
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

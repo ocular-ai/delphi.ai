@@ -21,14 +21,11 @@ class TruncatedInverseWishart(
 ):
     """Model for truncated inverse Wishart distributions, df and scale unknown.
 
-    Samples are rows of ``vech(X)``, so ``dims`` here is the matrix side while
-    the base class's ``dims`` is the row width ``size * (size + 1) / 2``.
-
-    Attributes:
-        size: Side of the sampled matrices.
+    Samples are rows of ``vech(X)``, so ``dims`` is the row width
+    ``size * (size + 1) / 2`` for matrices of side ``size``.
     """
 
-    dist = inverse_wishart.InverseWishart
+    family = inverse_wishart.InverseWishart
     # The Wishart's statistic of X^{-1}, so it couples as the Wishart's does.
     defaults = gamma_unknown_concentration.TruncatedGammaUnknownConcentrationConfig
     estimate_suffixes = ("df_", "scale_")
@@ -38,7 +35,6 @@ class TruncatedInverseWishart(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -48,14 +44,15 @@ class TruncatedInverseWishart(
         Args:
             phi: Truncation set oracle, over vech rows; None learns it from
                 the sample.
-            dims: Side of the sampled matrices.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(
-            phi, helpers.vech_size(dims), alpha, hyperparameters=hyperparameters
-        )
-        self.size = dims
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
+
+    @property
+    def size(self) -> int:
+        """Side of the sampled matrices, read from the vech rows' width."""
+        return helpers.vech_side(self.dims)
 
     def _calc_emp_model(self):
         """Start at the Wishart's rough start on ``X^{-1}``, then warm start."""
@@ -78,46 +75,6 @@ class TruncatedInverseWishart(
         """Split theta's canonical form into df and the scale matrix."""
         canonical = inverse_wishart.InverseWishart.to_canonical(theta)
         return canonical[0], helpers.unvech(canonical[1:], self.size)
-
-    @property
-    def best_df_(self):
-        """Return the best degrees-of-freedom estimate."""
-        return self._canonical(self.best_params)[0]
-
-    @property
-    def final_df_(self):
-        """Return the final degrees-of-freedom estimate."""
-        return self._canonical(self.final_params)[0]
-
-    @property
-    def ema_df_(self):
-        """Return the EMA degrees-of-freedom estimate."""
-        return self._canonical(self.ema_params)[0]
-
-    @property
-    def avg_df_(self):
-        """Return the averaged degrees-of-freedom estimate."""
-        return self._canonical(self.avg_params)[0]
-
-    @property
-    def best_scale_(self):
-        """Return the best scale-matrix estimate."""
-        return self._canonical(self.best_params)[1]
-
-    @property
-    def final_scale_(self):
-        """Return the final scale-matrix estimate."""
-        return self._canonical(self.final_params)[1]
-
-    @property
-    def ema_scale_(self):
-        """Return the EMA scale-matrix estimate."""
-        return self._canonical(self.ema_params)[1]
-
-    @property
-    def avg_scale_(self):
-        """Return the averaged scale-matrix estimate."""
-        return self._canonical(self.avg_params)[1]
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

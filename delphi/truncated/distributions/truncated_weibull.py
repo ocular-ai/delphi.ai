@@ -30,7 +30,6 @@ class TruncatedWeibull(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         concentration: ch.Tensor,
         alpha: Optional[float] = None,
         *,
@@ -41,11 +40,10 @@ class TruncatedWeibull(
         Args:
             phi: Truncation set oracle; None learns it from the sample.
             alpha: Survival probability lower bound.
-            dims: Number of dimensions.
             concentration: Known shape, one per coordinate.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
         self.concentration = concentration
 
     def _build_distribution(self):
@@ -71,25 +69,9 @@ class TruncatedWeibull(
         """Clamp theta to be strictly negative."""
         return ch.clamp(theta, max=-1e-6)
 
-    @property
-    def best_scale_(self):
-        """Return the best scale parameter estimate."""
-        return weibull.Weibull.to_canonical(self.concentration, self.best_params)
-
-    @property
-    def final_scale_(self):
-        """Return the final scale parameter estimate."""
-        return weibull.Weibull.to_canonical(self.concentration, self.final_params)
-
-    @property
-    def ema_scale_(self):
-        """Return the EMA scale parameter estimate."""
-        return weibull.Weibull.to_canonical(self.concentration, self.ema_params)
-
-    @property
-    def avg_scale_(self):
-        """Return the averaged scale parameter estimate."""
-        return weibull.Weibull.to_canonical(self.concentration, self.avg_params)
+    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ...]:
+        """Return the scale, which the known shape enters."""
+        return (weibull.Weibull.to_canonical(self.concentration, theta),)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

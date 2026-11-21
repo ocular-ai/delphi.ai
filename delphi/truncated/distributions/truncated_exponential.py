@@ -19,14 +19,13 @@ class TruncatedExponential(
 ):
     """Model for truncated exponential distributions to be passed into trainer."""
 
-    dist = exponential.Exponential
+    family = exponential.Exponential
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("rate_",)
 
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -36,10 +35,9 @@ class TruncatedExponential(
         Args:
             phi: Truncation set oracle; None learns it from the sample.
             alpha: Survival probability lower bound.
-            dims: Number of dimensions.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _calc_emp_model(self):
         """Initialize theta at the natural parameter corresponding to the empirical rate."""
@@ -51,26 +49,6 @@ class TruncatedExponential(
     def _constraints(self, theta):
         """Clamp theta to be strictly negative."""
         return ch.clamp(theta, max=-1e-6)
-
-    @property
-    def best_rate_(self):
-        """Return the best rate (canonical) parameter estimate."""
-        return exponential.Exponential.to_canonical(self.best_params)
-
-    @property
-    def final_rate_(self):
-        """Return the final rate (canonical) parameter estimate."""
-        return exponential.Exponential.to_canonical(self.final_params)
-
-    @property
-    def ema_rate_(self):
-        """Return the EMA rate (canonical) parameter estimate."""
-        return exponential.Exponential.to_canonical(self.ema_params)
-
-    @property
-    def avg_rate_(self):
-        """Return the averaged rate (canonical) parameter estimate."""
-        return exponential.Exponential.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

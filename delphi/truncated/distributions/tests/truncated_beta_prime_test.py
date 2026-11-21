@@ -25,7 +25,6 @@ def _beta_prime(
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     concentration1: ch.Tensor,
     concentration0: ch.Tensor,
     phi: helpers.Oracle,
@@ -39,11 +38,8 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_beta_prime.TruncatedBetaPrime,
         target=_beta_prime(concentration1, concentration0),
         phi=phi,
-        dims=dims,
         parameter=("concentration1_", "concentration0_"),
-        empirical=helpers.untruncated_mle(
-            truncated_beta_prime.TruncatedBetaPrime, dims
-        ),
+        empirical=helpers.untruncated_mle(truncated_beta_prime.TruncatedBetaPrime),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
         baseline_must_fail=baseline_must_fail,
@@ -55,10 +51,10 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
 
 # Unknown truncation needs degree 6 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         concentration1=ch.tensor([3.0]),
         concentration0=ch.tensor([4.0]),
         phi=lambda z: z[:, 0] > 1.5,
@@ -69,6 +65,7 @@ def test_one_dimension(known):
 
 # Unknown truncation needs degree 6 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     concentration1, concentration0 = ch.tensor([3.0, 2.0]), ch.tensor([4.0, 6.0])
@@ -79,7 +76,6 @@ def test_two_dimensions(known):
         bounds=(0.0, 50.0),
     )
     _recovers(
-        dims=2,
         concentration1=concentration1,
         concentration0=concentration0,
         phi=calibrated.phi,
@@ -90,6 +86,7 @@ def test_two_dimensions(known):
 
 # Unknown truncation, degree 6: over seeds 0,1,2 the estimate's KL measured
 # 0.101 to 0.234 (ema), 0.100 to 0.238 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     concentration1, concentration0 = ch.tensor([3.0, 2.0]), ch.tensor([4.0, 6.0])
@@ -100,7 +97,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-50.0, 50.0),
     )
     _recovers(
-        dims=2,
         concentration1=concentration1,
         concentration0=concentration0,
         phi=calibrated.phi,
@@ -113,7 +109,6 @@ def test_two_dimensions_random_half_space(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         concentration1=ch.tensor([3.0]),
         concentration0=ch.tensor([4.0]),
         phi=delphi.oracle.Identity(),
@@ -126,7 +121,6 @@ def test_one_dimension_identity(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         concentration1=ch.linspace(1.5, 5.0, 10),
         concentration0=ch.linspace(3.0, 8.0, 10),
         phi=delphi.oracle.Identity(),
@@ -148,7 +142,6 @@ def test_one_dimension_small_mass(known):
         bounds=(0.0, 100.0),
     )
     _recovers(
-        dims=1,
         concentration1=concentration1,
         concentration0=concentration0,
         phi=calibrated.phi,
@@ -158,6 +151,7 @@ def test_one_dimension_small_mass(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -174,7 +168,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(0.0, 500.0),
     )
     _recovers(
-        dims=10,
         concentration1=concentration1,
         concentration0=concentration0,
         phi=calibrated.phi,
@@ -185,6 +178,7 @@ def test_ten_dimensions_sum_threshold(known):
 # Unknown truncation is flaky here: over seeds 0 to 14 at rho 0.3, six fits
 # stay too close to tell apart and one learned set misses by 0.36, as CI hit.
 # Rho 0.4, 0.5 and degree 2 or 6 fail as often or more.
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=False,
@@ -199,9 +193,8 @@ def test_indistinguishable_pair(known):
             _beta_prime(ch.tensor([6.0]), ch.tensor([11.0])),
         ),
         phi=lambda z: (z[:, 0] > 0.3) & (z[:, 0] < 0.7),
-        dims=1,
         parameter=("concentration1_", "concentration0_"),
-        empirical=helpers.untruncated_mle(truncated_beta_prime.TruncatedBetaPrime, 1),
+        empirical=helpers.untruncated_mle(truncated_beta_prime.TruncatedBetaPrime),
         rebuild=_beta_prime,
         known=known,
         hyperparameters={"truncation_set_rho": 0.3},
@@ -225,7 +218,6 @@ def test_twenty_dimensions_small_mass(known):
         bounds=(0.0, 1000.0),
     )
     _recovers(
-        dims=20,
         concentration1=concentration1,
         concentration0=concentration0,
         phi=calibrated.phi,

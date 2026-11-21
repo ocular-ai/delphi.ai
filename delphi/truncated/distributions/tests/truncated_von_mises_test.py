@@ -44,7 +44,6 @@ def von_mises_kl_divergence(
 
 
 def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    dims: int,
     loc: ch.Tensor,
     concentration: ch.Tensor,
     phi: helpers.Oracle,
@@ -58,9 +57,8 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
         model_class=truncated_von_mises.TruncatedVonMises,
         target=torch.distributions.VonMises(loc, concentration),
         phi=phi,
-        dims=dims,
         parameter=("loc_", "concentration_"),
-        empirical=helpers.untruncated_mle(truncated_von_mises.TruncatedVonMises, dims),
+        empirical=helpers.untruncated_mle(truncated_von_mises.TruncatedVonMises),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
         baseline_must_fail=baseline_must_fail,
@@ -70,10 +68,9 @@ def _recovers(  # pylint: disable=too-many-arguments,too-many-positional-argumen
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         loc=ch.tensor([0.0]),
         concentration=ch.tensor([2.0]),
         phi=lambda z: z[:, 0] > 0.3,
@@ -83,6 +80,7 @@ def test_one_dimension(known):
 
 # Unknown truncation needs rho 0.3 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     loc, concentration = ch.tensor([0.0, 1.0]), ch.tensor([2.0, 1.0])
@@ -93,7 +91,6 @@ def test_two_dimensions(known):
         bounds=(-math.pi, math.pi),
     )
     _recovers(
-        dims=2,
         loc=loc,
         concentration=concentration,
         phi=calibrated.phi,
@@ -102,6 +99,7 @@ def test_two_dimensions(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -116,15 +114,13 @@ def test_two_dimensions_random_half_space(known):
         target_alpha=(0.15, 0.25),
         bounds=(-50.0, 50.0),
     )
-    _recovers(
-        dims=2, loc=loc, concentration=concentration, phi=calibrated.phi, known=known
-    )
+    _recovers(loc=loc, concentration=concentration, phi=calibrated.phi, known=known)
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@pytest.mark.long
+@helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         loc=ch.tensor([0.0]),
         concentration=ch.tensor([2.0]),
         phi=delphi.oracle.Identity(),
@@ -134,11 +130,11 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     loc, concentration = ch.linspace(-1.0, 1.0, 10), ch.linspace(0.5, 3.0, 10)
     _recovers(
-        dims=10,
         loc=loc,
         concentration=concentration,
         phi=delphi.oracle.Identity(),
@@ -160,7 +156,6 @@ def test_one_dimension_small_mass(known):
     )
     # At 1% mass the default 2500 steps end at ema KL 0.124; 5000 reach 0.037.
     _recovers(
-        dims=1,
         loc=loc,
         concentration=concentration,
         phi=calibrated.phi,
@@ -179,13 +174,12 @@ def test_ten_dimensions_sum_threshold(known):
         target_alpha=(0.15, 0.25),
         bounds=(-10 * math.pi, 10 * math.pi),
     )
-    _recovers(
-        dims=10, loc=loc, concentration=concentration, phi=calibrated.phi, known=known
-    )
+    _recovers(loc=loc, concentration=concentration, phi=calibrated.phi, known=known)
 
 
 # Unknown truncation needs rho 0.3 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_indistinguishable_pair(known):
     helpers.assert_family_distinguishes(
@@ -195,10 +189,28 @@ def test_indistinguishable_pair(known):
             torch.distributions.VonMises(ch.tensor([0.0]), ch.tensor([0.5])),
         ),
         phi=lambda z: (z[:, 0] > -1.0) & (z[:, 0] < 1.0),
-        dims=1,
         parameter=("loc_", "concentration_"),
-        empirical=helpers.untruncated_mle(truncated_von_mises.TruncatedVonMises, 1),
+        empirical=helpers.untruncated_mle(truncated_von_mises.TruncatedVonMises),
         divergence=von_mises_kl_divergence,
         known=known,
         hyperparameters={"truncation_set_rho": 0.3},
+    )
+
+
+# Seeds 0-2: KL at most 0.0032 (ema), 0.0032 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    loc, concentration = ch.linspace(-1.0, 1.0, 20), ch.linspace(0.5, 3.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.VonMises(loc, concentration),
+        target_alpha=(0.15, 0.25),
+        bounds=(-20 * math.pi, 20 * math.pi),
+    )
+    _recovers(
+        loc=loc,
+        concentration=concentration,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.0064, "avg": 0.0064},
+        max_coordinate=0.0014,
     )

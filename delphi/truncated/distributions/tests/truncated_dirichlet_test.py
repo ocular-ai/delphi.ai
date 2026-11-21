@@ -28,16 +28,12 @@ def _recovers(
     known: bool = True,
     **unknown: Any,
 ) -> None:
-    categories = concentration.size(0)
     helpers.assert_family_recovers(
         model_class=truncated_dirichlet.TruncatedDirichlet,
         target=torch.distributions.Dirichlet(concentration),
         phi=phi,
-        dims=categories,
         parameter="concentration_",
-        empirical=helpers.untruncated_mle(
-            truncated_dirichlet.TruncatedDirichlet, categories
-        ),
+        empirical=helpers.untruncated_mle(truncated_dirichlet.TruncatedDirichlet),
         hyperparameters=hyperparameters,
         pass_alpha=pass_alpha,
         baseline_must_fail=baseline_must_fail,
@@ -56,6 +52,7 @@ def test_three_categories(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_three_categories_random_half_space(known):
     concentration = ch.tensor([2.0, 3.0, 4.0])
@@ -68,6 +65,7 @@ def test_three_categories_random_half_space(known):
     _recovers(concentration=concentration, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_three_categories_triangle(known):
     _recovers(
@@ -88,6 +86,7 @@ def test_three_categories_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_ten_categories_identity(known):
     _recovers(
@@ -118,6 +117,7 @@ def test_three_categories_small_mass(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_ten_categories_norm_threshold(known):
     concentration = ch.linspace(1.0, 5.0, 10)
@@ -130,6 +130,7 @@ def test_ten_categories_norm_threshold(known):
     _recovers(concentration=concentration, phi=calibrated.phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_indistinguishable_pair(known):
     # Given x0, the other categories' shares are Dirichlet in the rest of the
@@ -142,9 +143,8 @@ def test_indistinguishable_pair(known):
             torch.distributions.Dirichlet(ch.tensor([5.0, 3.0, 4.0])),
         ),
         phi=lambda z: (z[:, 0] > 0.25) & (z[:, 0] < 0.35),
-        dims=3,
         parameter="concentration_",
-        empirical=helpers.untruncated_mle(truncated_dirichlet.TruncatedDirichlet, 3),
+        empirical=helpers.untruncated_mle(truncated_dirichlet.TruncatedDirichlet),
         known=known,
         unlearnable=True,
     )
@@ -154,6 +154,23 @@ def test_unknown_truncation_raises():
     # Every sample sums to one, so no polynomial basis is independent on them.
     ch.manual_seed(0)
     sample = torch.distributions.Dirichlet(ch.tensor([2.0, 3.0, 4.0])).sample([500])
-    model = truncated_dirichlet.TruncatedDirichlet(None, 3)
+    model = truncated_dirichlet.TruncatedDirichlet(None)
     with pytest.raises(ValueError, match="truncation_set_degree"):
         model.fit(sample[sample[:, 0] > 0.3])
+
+
+# Seeds 0-2: KL at most 0.0017 (ema), 0.0019 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_categories_norm_threshold():
+    concentration = ch.linspace(1.0, 5.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.norm_threshold,
+        torch.distributions.Dirichlet(concentration),
+        target_alpha=(0.15, 0.25),
+        bounds=(0.0, 1.0),
+    )
+    _recovers(
+        concentration=concentration,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.0034, "avg": 0.0038},
+    )

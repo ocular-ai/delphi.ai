@@ -47,7 +47,6 @@ def _fit(
         known_truncated_multivariate_normal.KnownTruncationMultivariateNormal,
         phi_standardised,
         known,
-        target.loc.numel(),
         *args,
         hyperparameters=hyperparameters,
     )
@@ -100,6 +99,7 @@ def _calibrated(
     return truncation_sets.calibrate(factory, target, **kwargs).phi
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension(known):
     target = helpers.correlated_normal(1)
@@ -112,6 +112,7 @@ def test_one_dimension(known):
     _recovers(target, phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     target = helpers.correlated_normal(2)
@@ -124,6 +125,7 @@ def test_two_dimensions(known):
     _recovers(target, phi, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     target = helpers.correlated_normal(2)
@@ -147,6 +149,7 @@ def test_two_dimensions_annulus(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -163,6 +166,7 @@ def test_two_dimensions_crescent(known):
 
 # Unknown truncation: over seeds 0,1,2 the estimate's KL measured 0.136 to
 # 0.200 (ema), 0.135 to 0.199 (avg); the set error 0.117 to 0.147.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_two_dimensions_random_disc_union(known):
     target = helpers.correlated_normal(2)
@@ -180,6 +184,7 @@ def test_two_dimensions_random_disc_union(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -199,6 +204,7 @@ def test_ten_dimensions(known):
 
 # Unknown truncation, degree 3: over seeds 0,1,2 the estimate's KL measured
 # 0.284 to 0.451 (ema), 0.256 to 0.453 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     target = helpers.correlated_normal(10)
@@ -221,6 +227,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -257,6 +264,7 @@ def test_twenty_dimensions(known):
     _recovers(target, phi, dataset_size=10000, known=known)
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
@@ -269,6 +277,7 @@ def test_one_dimension_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
@@ -281,6 +290,7 @@ def test_ten_dimensions_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     target = helpers.correlated_normal(1)
@@ -297,10 +307,11 @@ def test_one_dimension_small_mass(known):
 def test_unit_alpha_is_rejected():
     with pytest.raises(ValueError, match="nothing was truncated"):
         known_truncated_multivariate_normal.KnownTruncationMultivariateNormal(
-            delphi.oracle.Identity(), 2, alpha=1.0
+            delphi.oracle.Identity(), alpha=1.0
         )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,

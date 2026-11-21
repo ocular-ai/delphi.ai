@@ -16,7 +16,6 @@ ch.set_printoptions(precision=4, sci_mode=False)
 
 
 def _recovers(
-    dims: int,
     rate: ch.Tensor,
     phi: helpers.Oracle,
     hyperparameters: Optional[dict] = None,
@@ -29,7 +28,6 @@ def _recovers(
         model_class=truncated_exponential.TruncatedExponential,
         target=torch.distributions.Exponential(rate),
         phi=phi,
-        dims=dims,
         parameter="rate_",
         empirical=lambda s: 1.0 / s.mean(0),
         hyperparameters=hyperparameters,
@@ -40,10 +38,9 @@ def _recovers(
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         rate=ch.tensor([1.0]),
         phi=lambda z: z > 1,
         hyperparameters={"batch_size": 1},
@@ -60,7 +57,6 @@ def test_two_dimensions(known):
         target_alpha=(0.15, 0.25),
     )
     _recovers(
-        dims=2,
         rate=rate,
         phi=calibrated.phi,
         known=known,
@@ -76,7 +72,6 @@ def test_twenty_dimensions(known):
         target_alpha=(0.15, 0.25),
     )
     _recovers(
-        dims=20,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"iterations": 1500, "lr": 1e-1},
@@ -93,7 +88,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-25.0, 25.0),
     )
     _recovers(
-        dims=2,
         rate=rate,
         phi=calibrated.phi,
         known=known,
@@ -102,6 +96,7 @@ def test_two_dimensions_random_half_space(known):
 
 # Unknown truncation, rho 0.25: over seeds 0,1,2 the estimate's KL measured
 # 0.143 to 0.175 (ema), 0.143 to 0.173 (avg).
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_ellipsoid(known):
     rate = ch.tensor([1.0, 2.0])
@@ -113,7 +108,6 @@ def test_two_dimensions_random_ellipsoid(known):
     # A bounded set leaves the empirical rate far from the truth, so the lr
     # the axis-aligned tests use still measures 0.3173 after 2500 steps.
     _recovers(
-        dims=2,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"iterations": 5000, "lr": 1e-1, "truncation_set_rho": 0.25},
@@ -125,7 +119,6 @@ def test_two_dimensions_random_ellipsoid(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         rate=ch.tensor([1.0]),
         phi=delphi.oracle.Identity(),
         hyperparameters={"iterations": 1500},
@@ -138,7 +131,6 @@ def test_one_dimension_identity(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         rate=ch.linspace(1.0, 2.0, 10),
         phi=delphi.oracle.Identity(),
         hyperparameters={"iterations": 1500},
@@ -160,7 +152,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(0.0, 200.0),
     )
     _recovers(
-        dims=10,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"lr": 1e-1},
@@ -168,6 +159,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     rate = ch.tensor([1.0])
@@ -180,7 +172,6 @@ def test_one_dimension_small_mass(known):
         bounds=(0.0, 50.0),
     )
     _recovers(
-        dims=1,
         rate=rate,
         phi=calibrated.phi,
         known=known,
@@ -189,6 +180,7 @@ def test_one_dimension_small_mass(known):
 
 # Unknown truncation needs rho 0.5 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_norm_threshold(known):
     rate = ch.linspace(1.0, 2.0, 10)
@@ -200,7 +192,6 @@ def test_ten_dimensions_norm_threshold(known):
         bounds=(0.0, 100.0),
     )
     _recovers(
-        dims=10,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"lr": 1e-1, "truncation_set_rho": 0.5},
@@ -212,7 +203,6 @@ def test_unit_alpha_is_rejected():
     with pytest.raises(ValueError, match="nothing was truncated"):
         truncated_exponential.TruncatedExponential(
             delphi.oracle.Identity(),
-            1,
             alpha=1.0,
             hyperparameters={"iterations": 10},
         )
@@ -234,7 +224,6 @@ def test_indistinguishable_pair(known):
             torch.distributions.Exponential(ch.tensor([1.5])),
         ),
         phi=lambda z: (z[:, 0] > 1.0) & (z[:, 0] < 1.5),
-        dims=1,
         parameter="rate_",
         empirical=lambda s: 1.0 / s.mean(0),
         known=known,
@@ -248,7 +237,6 @@ def test_hessian_refuses_a_theta_with_no_mass_on_the_set():
     )
     model = truncated_exponential.TruncatedExponential(
         lambda z: z[:, 0] > 0.5,
-        1,
         sample.alpha,
         hyperparameters={"iterations": 10},
     )
@@ -266,7 +254,6 @@ def test_unknown_truncation_adopts_the_learned_set():
     )
     model = truncated_exponential.TruncatedExponential(
         None,
-        1,
         hyperparameters={
             "iterations": 1,
             "max_phases": 1,

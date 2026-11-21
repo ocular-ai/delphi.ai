@@ -28,7 +28,6 @@ class KnownTruncationMultivariateNormalKnownCovariance(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         covariance_matrix: ch.Tensor,
         alpha: Optional[float] = None,
         *,
@@ -39,11 +38,10 @@ class KnownTruncationMultivariateNormalKnownCovariance(
         Args:
             phi: Truncation set oracle; None learns it from the sample.
             alpha: Survival probability lower bound.
-            dims: Number of dimensions.
             covariance_matrix: Known covariance matrix.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
         self.covariance_matrix = covariance_matrix
 
     def _build_distribution(self):
@@ -74,32 +72,12 @@ class KnownTruncationMultivariateNormalKnownCovariance(
         with ch.no_grad():
             self.nll_init = self._compute_nll(self.emp_theta)
 
-    @property
-    def best_loc_(self):
-        """Best mean vector estimate based on lowest training loss."""
-        return multivariate_normal_known_covariance.MultivariateNormalKnownCovariance.to_canonical(
-            self.best_params, self.covariance_matrix
-        )
-
-    @property
-    def final_loc_(self):
-        """Final mean vector estimate at the end of training."""
-        return multivariate_normal_known_covariance.MultivariateNormalKnownCovariance.to_canonical(
-            self.final_params, self.covariance_matrix
-        )
-
-    @property
-    def ema_loc_(self):
-        """Exponential moving-average mean vector estimate."""
-        return multivariate_normal_known_covariance.MultivariateNormalKnownCovariance.to_canonical(
-            self.ema_params, self.covariance_matrix
-        )
-
-    @property
-    def avg_loc_(self):
-        """Running-average mean vector estimate."""
-        return multivariate_normal_known_covariance.MultivariateNormalKnownCovariance.to_canonical(
-            self.avg_params, self.covariance_matrix
+    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ...]:
+        """Return the mean, which the known covariance enters."""
+        return (
+            multivariate_normal_known_covariance.MultivariateNormalKnownCovariance.to_canonical(
+                theta, self.covariance_matrix
+            ),
         )
 
     def __str__(self):

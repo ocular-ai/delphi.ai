@@ -46,14 +46,11 @@ class TruncatedWishart(
     """Model for truncated Wishart distributions with unknown df and scale.
 
     Samples are rows of ``vech(X)``, the lower triangle of each matrix, so
-    ``dims`` here is the matrix side while the base class's ``dims`` is the
-    row width ``size * (size + 1) / 2``.
-
-    Attributes:
-        size: Side of the sampled matrices.
+    ``dims`` is the row width ``size * (size + 1) / 2`` for matrices of side
+    ``size``.
     """
 
-    dist = wishart.Wishart
+    family = wishart.Wishart
     # A one-by-one Wishart is the two-parameter Gamma, whose log x and x couple
     # as log det X and X do.
     defaults = gamma_unknown_concentration.TruncatedGammaUnknownConcentrationConfig
@@ -64,7 +61,6 @@ class TruncatedWishart(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -74,14 +70,15 @@ class TruncatedWishart(
         Args:
             phi: Truncation set oracle, over vech rows; None learns it from
                 the sample.
-            dims: Side of the sampled matrices.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(
-            phi, helpers.vech_size(dims), alpha, hyperparameters=hyperparameters
-        )
-        self.size = dims
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
+
+    @property
+    def size(self) -> int:
+        """Side of the sampled matrices, read from the vech rows' width."""
+        return helpers.vech_side(self.dims)
 
     def _calc_emp_model(self):
         """Start from ``rough_start``, refined by the warm start."""
@@ -100,46 +97,6 @@ class TruncatedWishart(
         """Split theta's canonical form into df and the scale matrix."""
         canonical = wishart.Wishart.to_canonical(theta)
         return canonical[0], helpers.unvech(canonical[1:], self.size)
-
-    @property
-    def best_df_(self):
-        """Return the best degrees-of-freedom estimate."""
-        return self._canonical(self.best_params)[0]
-
-    @property
-    def final_df_(self):
-        """Return the final degrees-of-freedom estimate."""
-        return self._canonical(self.final_params)[0]
-
-    @property
-    def ema_df_(self):
-        """Return the EMA degrees-of-freedom estimate."""
-        return self._canonical(self.ema_params)[0]
-
-    @property
-    def avg_df_(self):
-        """Return the averaged degrees-of-freedom estimate."""
-        return self._canonical(self.avg_params)[0]
-
-    @property
-    def best_covariance_matrix_(self):
-        """Return the best scale-matrix estimate."""
-        return self._canonical(self.best_params)[1]
-
-    @property
-    def final_covariance_matrix_(self):
-        """Return the final scale-matrix estimate."""
-        return self._canonical(self.final_params)[1]
-
-    @property
-    def ema_covariance_matrix_(self):
-        """Return the EMA scale-matrix estimate."""
-        return self._canonical(self.ema_params)[1]
-
-    @property
-    def avg_covariance_matrix_(self):
-        """Return the averaged scale-matrix estimate."""
-        return self._canonical(self.avg_params)[1]
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

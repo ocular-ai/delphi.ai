@@ -19,14 +19,13 @@ class TruncatedMaxwell(
 ):
     """Model for truncated Maxwell distributions."""
 
-    dist = maxwell.Maxwell
+    family = maxwell.Maxwell
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("scale_",)
 
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -35,11 +34,10 @@ class TruncatedMaxwell(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of dimensions.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _calc_emp_model(self):
         """Initialize theta at the MLE scale ``sqrt(mean(x^2) / 3)``."""
@@ -52,26 +50,6 @@ class TruncatedMaxwell(
     def _constraints(self, theta):
         """Clamp theta to be strictly negative, so the scale is real."""
         return ch.clamp(theta, max=-1e-6)
-
-    @property
-    def best_scale_(self):
-        """Return the best scale estimate."""
-        return maxwell.Maxwell.to_canonical(self.best_params)
-
-    @property
-    def final_scale_(self):
-        """Return the final scale estimate."""
-        return maxwell.Maxwell.to_canonical(self.final_params)
-
-    @property
-    def ema_scale_(self):
-        """Return the EMA scale estimate."""
-        return maxwell.Maxwell.to_canonical(self.ema_params)
-
-    @property
-    def avg_scale_(self):
-        """Return the averaged scale estimate."""
-        return maxwell.Maxwell.to_canonical(self.avg_params)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

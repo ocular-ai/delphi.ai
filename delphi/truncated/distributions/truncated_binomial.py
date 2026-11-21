@@ -30,7 +30,6 @@ class TruncatedBinomial(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         total_count: ch.Tensor,
         alpha: Optional[float] = None,
         *,
@@ -40,12 +39,11 @@ class TruncatedBinomial(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of dimensions.
             total_count: Known number of trials, one per coordinate.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
         self.total_count = total_count
 
     def _build_distribution(self):
@@ -63,25 +61,9 @@ class TruncatedBinomial(
         self.emp_theta = binomial.Binomial.to_natural(emp)
         self.register_parameter("theta", torch.nn.Parameter(self.emp_theta.clone()))
 
-    @property
-    def best_probs_(self):
-        """Return the best success probability estimate."""
-        return binomial.Binomial.to_canonical(self.best_params)
-
-    @property
-    def final_probs_(self):
-        """Return the final success probability estimate."""
-        return binomial.Binomial.to_canonical(self.final_params)
-
-    @property
-    def ema_probs_(self):
-        """Return the EMA success probability estimate."""
-        return binomial.Binomial.to_canonical(self.ema_params)
-
-    @property
-    def avg_probs_(self):
-        """Return the averaged success probability estimate."""
-        return binomial.Binomial.to_canonical(self.avg_params)
+    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ...]:
+        """Return the canonical estimate theta encodes."""
+        return (binomial.Binomial.to_canonical(theta),)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Optional
 
+import torch as ch
 import torch.nn
 
 from delphi.configs.distributions.truncated import (
@@ -31,7 +32,6 @@ class TruncatedMultinomial(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         total_count: int,
         alpha: Optional[float] = None,
         *,
@@ -41,12 +41,11 @@ class TruncatedMultinomial(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of categories.
             total_count: Known number of trials.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
         self.total_count = total_count
 
     def _build_distribution(self):
@@ -63,25 +62,9 @@ class TruncatedMultinomial(
         self.emp_theta = multinomial.Multinomial.to_natural(probs / probs.sum())
         self.register_parameter("theta", torch.nn.Parameter(self.emp_theta.clone()))
 
-    @property
-    def best_probs_(self):
-        """Return the best probs estimate."""
-        return multinomial.Multinomial.to_canonical(self.best_params)
-
-    @property
-    def final_probs_(self):
-        """Return the final probs estimate."""
-        return multinomial.Multinomial.to_canonical(self.final_params)
-
-    @property
-    def ema_probs_(self):
-        """Return the EMA probs estimate."""
-        return multinomial.Multinomial.to_canonical(self.ema_params)
-
-    @property
-    def avg_probs_(self):
-        """Return the averaged probs estimate."""
-        return multinomial.Multinomial.to_canonical(self.avg_params)
+    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ...]:
+        """Return the canonical estimate theta encodes."""
+        return (multinomial.Multinomial.to_canonical(theta),)
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

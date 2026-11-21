@@ -19,7 +19,7 @@ class TruncatedBeta(
 ):
     """Model for truncated Beta distributions."""
 
-    dist = beta.Beta
+    family = beta.Beta
     defaults = exponential_family_configs.TruncatedExponentialFamilyDistributionConfig
     estimate_suffixes = ("concentration1_", "concentration0_")
     # Each coordinate's a and b are coupled, so the Hessian is block-diagonal
@@ -29,7 +29,6 @@ class TruncatedBeta(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -38,11 +37,10 @@ class TruncatedBeta(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of dimensions.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _calc_emp_model(self):
         """Initialize theta by the method of moments; the MLE has no closed form."""
@@ -57,46 +55,6 @@ class TruncatedBeta(
     def _constraints(self, theta):
         """Clamp theta above -1, so both shape parameters are positive."""
         return ch.clamp(theta, min=-1.0 + 1e-6)
-
-    @property
-    def best_concentration1_(self):
-        """Return the best first shape estimate."""
-        return beta.Beta.to_canonical(self.best_params)[: self.dims]
-
-    @property
-    def final_concentration1_(self):
-        """Return the final first shape estimate."""
-        return beta.Beta.to_canonical(self.final_params)[: self.dims]
-
-    @property
-    def ema_concentration1_(self):
-        """Return the EMA first shape estimate."""
-        return beta.Beta.to_canonical(self.ema_params)[: self.dims]
-
-    @property
-    def avg_concentration1_(self):
-        """Return the averaged first shape estimate."""
-        return beta.Beta.to_canonical(self.avg_params)[: self.dims]
-
-    @property
-    def best_concentration0_(self):
-        """Return the best second shape estimate."""
-        return beta.Beta.to_canonical(self.best_params)[self.dims :]
-
-    @property
-    def final_concentration0_(self):
-        """Return the final second shape estimate."""
-        return beta.Beta.to_canonical(self.final_params)[self.dims :]
-
-    @property
-    def ema_concentration0_(self):
-        """Return the EMA second shape estimate."""
-        return beta.Beta.to_canonical(self.ema_params)[self.dims :]
-
-    @property
-    def avg_concentration0_(self):
-        """Return the averaged second shape estimate."""
-        return beta.Beta.to_canonical(self.avg_params)[self.dims :]
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

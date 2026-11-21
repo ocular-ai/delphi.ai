@@ -16,7 +16,6 @@ ch.set_printoptions(precision=4, sci_mode=False)
 
 
 def _recovers(
-    dims: int,
     rate: ch.Tensor,
     phi: helpers.Oracle,
     hyperparameters: Optional[dict] = None,
@@ -30,7 +29,6 @@ def _recovers(
         model_class=truncated_poisson.TruncatedPoisson,
         target=torch.distributions.Poisson(rate),
         phi=phi,
-        dims=dims,
         parameter="rate_",
         empirical=lambda s: s.mean(0),
         hyperparameters=hyperparameters,
@@ -45,7 +43,6 @@ def _recovers(
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         rate=ch.tensor([1.0]),
         phi=lambda z: z > 1,
         hyperparameters={"batch_size": 1},
@@ -53,6 +50,7 @@ def test_one_dimension(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions(known):
     rate = ch.tensor([1.0, 2.0])
@@ -65,7 +63,6 @@ def test_two_dimensions(known):
         bounds=(0.0, 30.0),
     )
     _recovers(
-        dims=2,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"batch_size": 1},
@@ -73,6 +70,7 @@ def test_two_dimensions(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_twenty_dimensions(known):
     rate = 2 * ch.ones(20)
@@ -83,7 +81,6 @@ def test_twenty_dimensions(known):
         bounds=(0.0, 30.0),
     )
     _recovers(
-        dims=20,
         rate=rate,
         phi=calibrated.phi,
         known=known,
@@ -93,7 +90,6 @@ def test_twenty_dimensions(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_triangle(known):
     _recovers(
-        dims=2,
         rate=ch.tensor([1.0, 2.0]),
         phi=truncation_sets.triangle([[-0.5, -0.5], [3.0, 0.5], [0.5, 3.0]]),
         hyperparameters={"batch_size": 1},
@@ -101,7 +97,7 @@ def test_two_dimensions_triangle(known):
     )
 
 
-@helpers.KNOWN_AND_UNKNOWN_CI
+@helpers.known_and_unknown(pytest.mark.long, ci=True)
 def test_two_dimensions_random_half_space(known):
     rate = ch.tensor([1.0, 2.0])
     calibrated = truncation_sets.calibrate(
@@ -110,7 +106,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-25.0, 25.0),
     )
     _recovers(
-        dims=2,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"batch_size": 1},
@@ -118,6 +113,7 @@ def test_two_dimensions_random_half_space(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -132,7 +128,6 @@ def test_five_dimensions_random_polytope(known):
         bounds=(-25.0, 25.0),
     )
     _recovers(
-        dims=5,
         rate=rate,
         phi=calibrated.phi,
         dataset_size=5000,
@@ -143,7 +138,6 @@ def test_five_dimensions_random_polytope(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         rate=ch.tensor([1.0]),
         phi=delphi.oracle.Identity(),
         hyperparameters={"iterations": 1500},
@@ -156,7 +150,6 @@ def test_one_dimension_identity(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         rate=ch.linspace(1.0, 3.0, 10),
         phi=delphi.oracle.Identity(),
         hyperparameters={"iterations": 1500},
@@ -166,6 +159,7 @@ def test_ten_dimensions_identity(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     rate = ch.linspace(1.0, 3.0, 10)
@@ -178,7 +172,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(0.0, 200.0),
     )
     _recovers(
-        dims=10,
         rate=rate,
         phi=calibrated.phi,
         hyperparameters={"lr": 1e-1},
@@ -186,6 +179,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_small_mass(known):
     rate = ch.tensor([1.0])
@@ -198,7 +192,6 @@ def test_one_dimension_small_mass(known):
         bounds=(0.0, 50.0),
     )
     _recovers(
-        dims=1,
         rate=rate,
         phi=calibrated.phi,
         known=known,
@@ -207,6 +200,7 @@ def test_one_dimension_small_mass(known):
 
 # Unknown truncation needs degree 6 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_indistinguishable_pair(known):
     # Truncated to a narrow window the two samples agree to within sampling
@@ -218,7 +212,6 @@ def test_indistinguishable_pair(known):
             torch.distributions.Poisson(ch.tensor([5.0])),
         ),
         phi=lambda z: (z[:, 0] >= 3) & (z[:, 0] <= 4),
-        dims=1,
         parameter="rate_",
         empirical=lambda s: s.mean(0),
         known=known,
@@ -226,6 +219,7 @@ def test_indistinguishable_pair(known):
     )
 
 
+@pytest.mark.long
 def test_phases_widen_a_budget_too_small_for_the_fit():
     target = torch.distributions.Poisson(ch.tensor([3.0]))
 
@@ -241,7 +235,7 @@ def test_phases_widen_a_budget_too_small_for_the_fit():
     for label, cap in (("one phase", {"max_phases": 1}), ("phases", {})):
         ch.manual_seed(1)
         model = truncated_poisson.TruncatedPoisson(
-            phi, 1, hyperparameters=hyperparameters | cap
+            phi, hyperparameters=hyperparameters | cap
         )
         fits[label] = model.fit(sample.S)
 

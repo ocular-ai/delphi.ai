@@ -18,7 +18,7 @@ class TruncatedBetaPrime(
 ):
     """Model for truncated beta prime distributions."""
 
-    dist = beta_prime.BetaPrime
+    family = beta_prime.BetaPrime
     # log x and log(1 + x) are nearly collinear, which preconditioning undoes.
     defaults = gamma_unknown_concentration.TruncatedGammaUnknownConcentrationConfig
     estimate_suffixes = ("concentration1_", "concentration0_")
@@ -28,7 +28,6 @@ class TruncatedBetaPrime(
     def __init__(
         self,
         phi: Optional[Callable],
-        dims: int,
         alpha: Optional[float] = None,
         *,
         hyperparameters: Optional[dict] = None,
@@ -37,11 +36,10 @@ class TruncatedBetaPrime(
 
         Args:
             phi: Truncation set oracle; None learns it from the sample.
-            dims: Number of dimensions.
             alpha: Survival probability lower bound.
             hyperparameters: Hyperparameter dict.
         """
-        super().__init__(phi, dims, alpha, hyperparameters=hyperparameters)
+        super().__init__(phi, alpha, hyperparameters=hyperparameters)
 
     def _truncation_set_transform(self) -> torch.distributions.transforms.Transform:
         """Learn the set in log x, where the heavy right tail is tame."""
@@ -66,53 +64,6 @@ class TruncatedBetaPrime(
         first = theta[: self.dims].clamp(min=-1.0 + 1e-6)
         second = ch.minimum(theta[self.dims :], -first - 1.0 - 1e-6)
         return ch.cat([first, second])
-
-    def _canonical(self, theta: ch.Tensor) -> tuple[ch.Tensor, ch.Tensor]:
-        """Split theta's canonical form into the two shapes."""
-        concentration1, concentration0 = beta_prime.BetaPrime.to_canonical(theta).split(
-            self.dims
-        )
-        return concentration1, concentration0
-
-    @property
-    def best_concentration1_(self):
-        """Return the best first shape estimate."""
-        return self._canonical(self.best_params)[0]
-
-    @property
-    def final_concentration1_(self):
-        """Return the final first shape estimate."""
-        return self._canonical(self.final_params)[0]
-
-    @property
-    def ema_concentration1_(self):
-        """Return the EMA first shape estimate."""
-        return self._canonical(self.ema_params)[0]
-
-    @property
-    def avg_concentration1_(self):
-        """Return the averaged first shape estimate."""
-        return self._canonical(self.avg_params)[0]
-
-    @property
-    def best_concentration0_(self):
-        """Return the best second shape estimate."""
-        return self._canonical(self.best_params)[1]
-
-    @property
-    def final_concentration0_(self):
-        """Return the final second shape estimate."""
-        return self._canonical(self.final_params)[1]
-
-    @property
-    def ema_concentration0_(self):
-        """Return the EMA second shape estimate."""
-        return self._canonical(self.ema_params)[1]
-
-    @property
-    def avg_concentration0_(self):
-        """Return the averaged second shape estimate."""
-        return self._canonical(self.avg_params)[1]
 
     def __str__(self):
         """Return a human-readable name for this distribution."""

@@ -53,7 +53,6 @@ def _model(
         _UNKNOWN_HYPERPARAMETERS if phi is None else _KNOWN_HYPERPARAMETERS
     )
     return truncated_multivariate_normal.TruncatedMultivariateNormal(
-        2,
         phi=phi,
         covariance_matrix=covariance_matrix,
         hyperparameters=hyperparameters,
@@ -111,6 +110,31 @@ def test_estimates_come_from_the_estimator(phi, covariance_matrix):
     assert ch.equal(model.covariance_matrix_, model.avg_covariance_matrix_)
 
 
+def test_estimates_come_back_as_torch_normals():
+    model = _model(_half_plane, None).fit(_sample(_half_plane))
+    for name in _ESTIMATES:
+        normal = getattr(model, f"{name}_")
+        assert isinstance(normal, torch.distributions.MultivariateNormal)
+        assert ch.allclose(normal.loc, getattr(model, f"{name}_loc_"))
+        assert ch.allclose(
+            normal.covariance_matrix, getattr(model, f"{name}_covariance_matrix_")
+        )
+
+
+def test_the_estimator_returns_its_own_family():
+    model = _model(_half_plane, None).fit(_sample(_half_plane))
+    estimator = model.estimator_
+    for name in _ESTIMATES:
+        normal = getattr(estimator, f"{name}_")
+        assert isinstance(normal, torch.distributions.MultivariateNormal)
+        assert ch.allclose(normal.loc, getattr(estimator, f"{name}_loc_"))
+        assert ch.allclose(
+            normal.covariance_matrix,
+            getattr(estimator, f"{name}_covariance_matrix_"),
+            atol=1e-5,
+        )
+
+
 def test_known_truncation_set_is_phi():
     assert _model(_half_plane, None).truncation_set() is _half_plane
 
@@ -122,16 +146,24 @@ def test_unknown_truncation_set_is_recovered():
 
 def test_alpha_reaches_the_estimator():
     model = truncated_multivariate_normal.TruncatedMultivariateNormal(
-        2, phi=_half_plane, alpha=0.5
+        phi=_half_plane, alpha=0.5
     )
     assert model.estimator_.alpha == 0.5
 
 
-def test_covariance_of_the_wrong_shape_raises():
+def test_covariance_that_is_not_square_raises():
     with pytest.raises(ValueError, match="covariance_matrix"):
         truncated_multivariate_normal.TruncatedMultivariateNormal(
-            3, covariance_matrix=_COVARIANCE
+            covariance_matrix=ch.ones(2, 3)
         )
+
+
+def test_covariance_narrower_than_the_sample_raises():
+    model = truncated_multivariate_normal.TruncatedMultivariateNormal(
+        phi=_half_plane, covariance_matrix=_COVARIANCE
+    )
+    with pytest.raises(ValueError, match="covariance_matrix"):
+        model.fit(ch.randn(100, 3))
 
 
 @pytest.mark.parametrize(
@@ -149,7 +181,7 @@ def test_l1_method_selects_the_known_estimator_without_phi(
     covariance_matrix, estimator
 ):
     model = truncated_multivariate_normal.TruncatedMultivariateNormal(
-        2, covariance_matrix=covariance_matrix, method="l1"
+        covariance_matrix=covariance_matrix, method="l1"
     )
     assert type(model.estimator_) is estimator
     assert model.estimator_.phi is None
@@ -157,7 +189,7 @@ def test_l1_method_selects_the_known_estimator_without_phi(
 
 def test_l1_truncation_set_is_learned():
     model = truncated_multivariate_normal.TruncatedMultivariateNormal(
-        2, method="l1", hyperparameters=_KNOWN_HYPERPARAMETERS
+        method="l1", hyperparameters=_KNOWN_HYPERPARAMETERS
     )
     with pytest.raises(RuntimeError, match="learned by fit"):
         model.truncation_set()
@@ -169,6 +201,5 @@ def test_l1_truncation_set_is_learned():
 def test_unknown_method_raises():
     with pytest.raises(ValueError, match="method"):
         truncated_multivariate_normal.TruncatedMultivariateNormal(
-            2,
             method="lasso",  # type: ignore[arg-type]
         )

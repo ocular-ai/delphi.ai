@@ -35,7 +35,6 @@ def pareto_kl_divergence(
 
 
 def _recovers(
-    dims: int,
     scale: ch.Tensor,
     tail: ch.Tensor,
     phi: helpers.Oracle,
@@ -49,7 +48,6 @@ def _recovers(
         model_class=truncated_pareto.TruncatedPareto,
         target=torch.distributions.Pareto(scale, tail),
         phi=phi,
-        dims=dims,
         parameter="alpha_",
         empirical=lambda s: 1.0 / (ch.log(s) - ch.log(scale)).mean(0),
         hyperparameters=hyperparameters,
@@ -66,7 +64,6 @@ def _recovers(
 @helpers.KNOWN_AND_UNKNOWN_CI
 def test_one_dimension(known):
     _recovers(
-        dims=1,
         scale=ch.tensor([1.0]),
         tail=ch.tensor([2.5]),
         phi=lambda z: z[:, 0] > 2.0,
@@ -84,7 +81,6 @@ def test_two_dimensions(known):
         bounds=(1.0, 500.0),
     )
     _recovers(
-        dims=2,
         scale=scale,
         tail=tail,
         phi=calibrated.phi,
@@ -94,6 +90,7 @@ def test_two_dimensions(known):
 
 # Unknown truncation, rho 0.3: over seeds 0,1,2 the estimate's KL measured
 # 0.032 to 0.074 (ema), 0.032 to 0.074 (avg); the set error 0.076 to 0.102.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_two_dimensions_random_half_space(known):
     scale, tail = ch.tensor([1.0, 2.0]), ch.tensor([2.5, 1.5])
@@ -103,7 +100,6 @@ def test_two_dimensions_random_half_space(known):
         bounds=(-25.0, 25.0),
     )
     _recovers(
-        dims=2,
         scale=scale,
         tail=tail,
         phi=calibrated.phi,
@@ -117,7 +113,6 @@ def test_two_dimensions_random_half_space(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_one_dimension_identity(known):
     _recovers(
-        dims=1,
         scale=ch.tensor([1.0]),
         tail=ch.tensor([2.5]),
         phi=delphi.oracle.Identity(),
@@ -131,7 +126,6 @@ def test_one_dimension_identity(known):
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_identity(known):
     _recovers(
-        dims=10,
         scale=ch.ones(10),
         tail=ch.linspace(1.5, 4.0, 10),
         phi=delphi.oracle.Identity(),
@@ -152,7 +146,6 @@ def test_one_dimension_small_mass(known):
         bounds=(1.0, 500.0),
     )
     _recovers(
-        dims=1,
         scale=scale,
         tail=tail,
         phi=calibrated.phi,
@@ -162,6 +155,7 @@ def test_one_dimension_small_mass(known):
 
 # Unknown truncation needs rho 0.5 here; over seeds 0,1,2 it meets the shared
 # bounds.
+@pytest.mark.long
 @helpers.KNOWN_AND_UNKNOWN
 def test_ten_dimensions_sum_threshold(known):
     scale, tail = ch.ones(10), ch.linspace(1.5, 4.0, 10)
@@ -172,7 +166,6 @@ def test_ten_dimensions_sum_threshold(known):
         bounds=(10.0, 500.0),
     )
     _recovers(
-        dims=10,
         scale=scale,
         tail=tail,
         phi=calibrated.phi,
@@ -181,6 +174,7 @@ def test_ten_dimensions_sum_threshold(known):
     )
 
 
+@pytest.mark.long
 @helpers.known_and_unknown(
     pytest.mark.xfail(
         strict=True,
@@ -195,11 +189,29 @@ def test_indistinguishable_pair(known):
             torch.distributions.Pareto(ch.tensor([1.0]), ch.tensor([4.0])),
         ),
         phi=lambda z: (z[:, 0] > 1.2) & (z[:, 0] < 1.4),
-        dims=1,
         parameter="alpha_",
         empirical=lambda s: 1.0 / ch.log(s).mean(0),
         model_args=(ch.tensor([1.0]),),
         rebuild=functools.partial(torch.distributions.Pareto, ch.tensor([1.0])),
         divergence=pareto_kl_divergence,
         known=known,
+    )
+
+
+# Seeds 0-2: KL at most 0.0010 (ema), 0.0009 (avg); bounds are twice that.
+@pytest.mark.slow
+def test_twenty_dimensions_sum_threshold():
+    scale, tail = ch.ones(20), ch.linspace(1.5, 4.0, 20)
+    calibrated = truncation_sets.calibrate(
+        truncation_sets.sum_threshold,
+        torch.distributions.Pareto(scale, tail),
+        target_alpha=(0.15, 0.25),
+        bounds=(20.0, 1000.0),
+    )
+    _recovers(
+        scale=scale,
+        tail=tail,
+        phi=calibrated.phi,
+        tolerances={"ema": 0.002, "avg": 0.0019},
+        max_coordinate=0.00058,
     )
